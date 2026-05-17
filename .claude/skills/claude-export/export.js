@@ -8,6 +8,30 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+// ---------- safe fs helpers ----------
+// Filesystem state can change under us (Claude Code is concurrently writing
+// jsonl, meta.json, tool-results, agent files). existsSync+read is TOCTOU.
+// These helpers swallow ENOENT/EACCES and return a benign default so callers
+// can keep going without try/catching every call.
+
+function safeReadFile(p) {
+  try { return fs.readFileSync(p, 'utf8'); }
+  catch { return null; }
+}
+function safeReaddir(p) {
+  try { return fs.readdirSync(p); }
+  catch { return []; }
+}
+function safeStat(p) {
+  try { return fs.statSync(p); }
+  catch { return null; }
+}
+function safeJsonParse(s) {
+  if (s == null) return null;
+  try { return JSON.parse(s); }
+  catch { return null; }
+}
+
 // ---------- session resolution ----------
 
 function encodeCwd(cwd) {
@@ -20,39 +44,51 @@ function projectDirFor(cwd) {
 
 function findSessionFile(arg) {
   if (arg) {
-    if (arg.endsWith('.jsonl') && fs.existsSync(arg)) {
-      return path.resolve(arg);
+    // Path-shaped argument: must exist as a file.
+    const looksLikePath = arg.endsWith('.jsonl') || arg.includes('/') || arg.includes(path.sep);
+    if (looksLikePath) {
+      const abs = path.resolve(arg);
+      const st = safeStat(abs);
+      if (!st) throw new Error(`File not found: ${arg}`);
+      if (!st.isFile()) throw new Error(`Not a file: ${arg}`);
+      return abs;
     }
+    // Treat arg as a session uuid: look in current project, then any project.
     const candidate = path.join(projectDirFor(process.cwd()), arg + '.jsonl');
-    if (fs.existsSync(candidate)) return candidate;
-    // Fallback: scan all projects
+    if (safeStat(candidate)) return candidate;
     const root = path.join(os.homedir(), '.claude', 'projects');
-    for (const proj of fs.readdirSync(root)) {
+    for (const proj of safeReaddir(root)) {
       const p = path.join(root, proj, arg + '.jsonl');
-      if (fs.existsSync(p)) return p;
+      if (safeStat(p)) return p;
     }
     throw new Error(`Could not find session: ${arg}`);
   }
   const dir = projectDirFor(process.cwd());
-  if (!fs.existsSync(dir)) throw new Error(`No Claude Code project dir for cwd: ${dir}`);
-  const files = fs.readdirSync(dir)
-    .filter(f => f.endsWith('.jsonl') && !f.startsWith('agent-'))
-    .map(f => ({ f, p: path.join(dir, f), s: fs.statSync(path.join(dir, f)) }))
-    .filter(x => x.s.size > 0)
-    .sort((a, b) => b.s.mtimeMs - a.s.mtimeMs);
+  const names = safeReaddir(dir);
+  if (!names.length) throw new Error(`No Claude Code project dir for cwd: ${dir}`);
+  const files = [];
+  for (const f of names) {
+    if (!f.endsWith('.jsonl') || f.startsWith('agent-')) continue;
+    const p = path.join(dir, f);
+    const st = safeStat(p);
+    if (!st || !st.isFile() || st.size === 0) continue;
+    files.push({ p, mtimeMs: st.mtimeMs });
+  }
   if (!files.length) throw new Error(`No session jsonl files in ${dir}`);
+  files.sort((a, b) => b.mtimeMs - a.mtimeMs);
   return files[0].p;
 }
 
 // ---------- jsonl parsing ----------
 
 function parseJsonl(file) {
-  const text = fs.readFileSync(file, 'utf8');
+  const text = safeReadFile(file);
+  if (text == null) return [];
   const out = [];
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
-    try { out.push(JSON.parse(line)); }
-    catch (e) { /* tolerate corrupt lines */ }
+    const o = safeJsonParse(line);
+    if (o) out.push(o);
   }
   return out;
 }
@@ -66,31 +102,27 @@ function loadSubagents(projDir, sessionId) {
 
   // Format A: <projDir>/<sessionId>/subagents/agent-<id>.jsonl  (+ <id>.meta.json)
   const subDir = path.join(projDir, sessionId, 'subagents');
-  if (fs.existsSync(subDir)) {
-    for (const f of fs.readdirSync(subDir)) {
-      if (!f.startsWith('agent-') || !f.endsWith('.jsonl')) continue;
-      const agentId = f.slice('agent-'.length, -'.jsonl'.length);
-      const metaPath = path.join(subDir, `agent-${agentId}.meta.json`);
-      let meta = {};
-      if (fs.existsSync(metaPath)) {
-        try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch {}
-      }
-      const entries = parseJsonl(path.join(subDir, f));
-      const stat = fs.statSync(path.join(subDir, f));
-      all.push({
-        agentId,
-        agentType: meta.agentType || 'subagent',
-        description: meta.description || '',
-        entries,
-        source: 'subdir',
-        mtimeMs: stat.mtimeMs,
-      });
-    }
+  for (const f of safeReaddir(subDir)) {
+    if (!f.startsWith('agent-') || !f.endsWith('.jsonl')) continue;
+    const agentId = f.slice('agent-'.length, -'.jsonl'.length);
+    const fullPath = path.join(subDir, f);
+    const entries = parseJsonl(fullPath);
+    if (!entries.length) continue;
+    const meta = safeJsonParse(safeReadFile(path.join(subDir, `agent-${agentId}.meta.json`))) || {};
+    const st = safeStat(fullPath);
+    all.push({
+      agentId,
+      agentType: meta.agentType || 'subagent',
+      description: meta.description || '',
+      entries,
+      source: 'subdir',
+      mtimeMs: st ? st.mtimeMs : 0,
+    });
   }
 
   // Format B: same-dir agent-*.jsonl siblings with matching sessionId
   if (all.length === 0) {
-    for (const f of fs.readdirSync(projDir)) {
+    for (const f of safeReaddir(projDir)) {
       if (!f.startsWith('agent-') || !f.endsWith('.jsonl')) continue;
       const p = path.join(projDir, f);
       const entries = parseJsonl(p);
@@ -98,13 +130,14 @@ function loadSubagents(projDir, sessionId) {
       const first = entries[0];
       if (first.sessionId && first.sessionId !== sessionId) continue;
       const agentId = first.agentId || f.slice('agent-'.length, -'.jsonl'.length);
+      const st = safeStat(p);
       all.push({
         agentId,
         agentType: 'subagent',
         description: '',
         entries,
         source: 'sibling',
-        mtimeMs: fs.statSync(p).mtimeMs,
+        mtimeMs: st ? st.mtimeMs : 0,
       });
     }
   }
@@ -167,19 +200,17 @@ function collectInlineProgressAgents(entries) {
 // Inline that content when we can find it.
 function loadExternalToolResult(projDir, sessionId, toolUseId, content) {
   const trDir = path.join(projDir, sessionId, 'tool-results');
-  if (!fs.existsSync(trDir)) return content;
-  const direct = path.join(trDir, `${toolUseId}.txt`);
-  if (fs.existsSync(direct)) {
-    return fs.readFileSync(direct, 'utf8');
+  if (toolUseId) {
+    const direct = safeReadFile(path.join(trDir, `${toolUseId}.txt`));
+    if (direct != null) return direct;
   }
-  // Older content sometimes references a short hash filename; try to extract
-  // from existing content string.
+  // Some older content references a short hash filename inline; try to extract
+  // it and read from disk.
   if (typeof content === 'string') {
     const m = content.match(/Full output saved to:\s*(\S+\.txt)/);
     if (m) {
-      const base = path.basename(m[1]);
-      const p = path.join(trDir, base);
-      if (fs.existsSync(p)) return fs.readFileSync(p, 'utf8');
+      const referenced = safeReadFile(path.join(trDir, path.basename(m[1])));
+      if (referenced != null) return referenced;
     }
   }
   return content;
@@ -331,6 +362,9 @@ function emit(payload, outPath) {
   const dataJson = JSON.stringify(payload)
     .replace(/<\/script>/gi, '\\u003c/script>')
     .replace(/<!--/g, '\\u003c!--');
+  if (!TEMPLATE.includes('/*__DATA__*/')) {
+    throw new Error('template.js is missing the /*__DATA__*/ placeholder');
+  }
   const html = TEMPLATE.replace('/*__DATA__*/', () => dataJson);
   fs.writeFileSync(outPath, html, 'utf8');
 }
@@ -342,12 +376,20 @@ const TEMPLATE = require('./template.js')();
 // ---------- main ----------
 
 (function main() {
-  const arg = process.argv[2];
-  const file = findSessionFile(arg);
-  const payload = buildPayload(file);
-  const isoStamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const outName = `claude-session-${isoStamp}_${payload.header.sessionId}.html`;
-  const outPath = path.resolve(process.cwd(), outName);
-  emit(payload, outPath);
-  process.stdout.write(outPath + '\n');
+  try {
+    const arg = process.argv[2];
+    const file = findSessionFile(arg);
+    const payload = buildPayload(file);
+    if (!payload.entries.length) {
+      process.stderr.write(`warning: session ${file} produced 0 entries; output may be empty\n`);
+    }
+    const isoStamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const outName = `claude-session-${isoStamp}_${payload.header.sessionId}.html`;
+    const outPath = path.resolve(process.cwd(), outName);
+    emit(payload, outPath);
+    process.stdout.write(outPath + '\n');
+  } catch (err) {
+    process.stderr.write(`claude-export: ${err.message}\n`);
+    process.exit(1);
+  }
 })();
