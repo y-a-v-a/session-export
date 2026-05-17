@@ -17,11 +17,13 @@ const CSS = `
   --bad:       #cc6666;
   --warn:      #f0c674;
   --thinking:  #b294bb;
-  --userBg:    #2a2d39;
-  --asstBg:    #1e1e24;
-  --toolBg:    #20242b;
-  --toolErrBg: #36242a;
-  --toolOkBg:  #1f2a23;
+  --userBg:    #22252e;
+  --userAccent:#3a4255;
+  --toolBg:    #23232c;
+  --toolErrBg: #2e2024;
+  --toolOkBg:  #1f2823;
+  --thinkBg:   #1f1c25;
+  --subBg:     #25221b;
   --codeBg:    #14141a;
   --diffAdd:   #1f3a1f;
   --diffDel:   #3a1f1f;
@@ -43,11 +45,13 @@ const CSS = `
   --bad:       #b3261e;
   --warn:      #8a6d00;
   --thinking:  #6a3d8a;
-  --userBg:    #eaecf3;
-  --asstBg:    #ffffff;
-  --toolBg:    #f3f4f6;
+  --userBg:    #ecf0f7;
+  --userAccent:#b9c4d8;
+  --toolBg:    #eef0ec;
   --toolErrBg: #fbe9e7;
   --toolOkBg:  #e8f3ec;
+  --thinkBg:   #f1ecf4;
+  --subBg:     #f4eee0;
   --codeBg:    #f4f4ef;
   --diffAdd:   #d8efd8;
   --diffDel:   #f6d4d4;
@@ -178,36 +182,35 @@ code, pre, kbd, samp, .mono {
 
 /* Entries */
 .entry {
-  margin: 0.75em 0;
+  margin: 0.125em 0;
   scroll-margin-top: 0.5em;
 }
+.entry.first-of-run { margin-top: 1em; }
 .entry .meta {
   font-size: 0.75em;
   color: var(--dim);
-  margin-bottom: 0.25em;
-  display: flex; gap: 0.625em;
+  margin-bottom: 0.125em;
+  display: flex; gap: 0.625em; align-items: baseline;
   font-family: ui-monospace, monospace;
 }
 .role-label {
   display: inline-block;
-  padding: 0.0625em 0.5em;
-  border-radius: 0.625em;
   font-size: 0.75em;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
-.role-user { background: var(--accent); color: var(--bg); }
-.role-asst { background: var(--accent2); color: var(--bg); }
+.role-user { color: var(--accent); }
+.role-asst { color: var(--accent2); }
 
-.bubble {
-  padding: 0.625em 0.875em;
-  border-radius: 0.5em;
-  background: var(--asstBg);
-  border: 1px solid var(--border);
+.bubble { padding: 0; background: none; border: none; }
+.bubble.user {
+  background: var(--userBg);
+  border-radius: 0.375em;
+  padding: 0.5em 0.75em;
+  border-left: 2px solid var(--userAccent);
 }
-.bubble.user { background: var(--userBg); }
-.bubble p { margin: 0.5em 0; }
+.bubble p { margin: 0.375em 0; }
 .bubble p:first-child { margin-top: 0; }
 .bubble p:last-child { margin-bottom: 0; }
 .bubble pre {
@@ -244,67 +247,82 @@ code, pre, kbd, samp, .mono {
 
 /* Thinking */
 .thinking {
-  margin: 0.375em 0;
-  border: 1px solid var(--border);
+  margin: 0.1875em 0;
+  background: var(--thinkBg);
   border-radius: 0.375em;
-  background: var(--panel2);
+  overflow: hidden;
 }
 .thinking-head {
   cursor: pointer;
-  padding: 0.3125em 0.625em;
+  padding: 0.25em 0.625em;
   font-size: 0.8125em;
   color: var(--thinking);
   font-style: italic;
   user-select: none;
   display: flex; align-items: center; gap: 0.375em;
 }
-.thinking-head::before { content: "▶"; font-size: 0.625em; transition: transform 0.1s; }
+.thinking-head::before { content: "▸"; font-size: 0.75em; opacity: 0.7; transition: transform 0.1s; display: inline-block; }
 .thinking.open .thinking-head::before { transform: rotate(90deg); }
-.thinking-body { display: none; padding: 0 0.625em 0.5em 1.375em; color: var(--muted); font-size: 0.875em; }
+.thinking-body {
+  display: none;
+  padding: 0.25em 0.75em 0.5em 1.625em;
+  color: var(--muted);
+  font-size: 0.875em;
+}
 .thinking.open .thinking-body { display: block; }
 .thinking-body pre { white-space: pre-wrap; margin: 0; font-family: ui-monospace, monospace; font-size: 0.875em; }
 
 /* Tools */
 .tool {
-  margin: 0.375em 0;
-  border: 1px solid var(--border);
-  border-radius: 0.375em;
+  margin: 0.1875em 0;
   background: var(--toolBg);
+  border-radius: 0.375em;
   overflow: hidden;
+  border-left: 2px solid transparent;
 }
-.tool.ok { border-left: 3px solid var(--good); }
-.tool.err { border-left: 3px solid var(--bad); background: var(--toolErrBg); }
+.tool.ok  { border-left-color: var(--good); }
+.tool.err { border-left-color: var(--bad); background: var(--toolErrBg); }
 .tool-head {
   cursor: pointer;
-  padding: 0.375em 0.625em;
+  padding: 0.25em 0.625em;
   font-size: 0.8125em;
-  display: flex; align-items: center; gap: 0.5em;
+  display: flex; align-items: baseline; gap: 0.5em;
   user-select: none;
   font-family: ui-monospace, monospace;
 }
-.tool-head::before { content: "▶"; font-size: 0.625em; color: var(--muted); transition: transform 0.1s; }
+.tool-head::before {
+  content: "▸";
+  font-size: 0.75em;
+  color: var(--muted);
+  opacity: 0.7;
+  transition: transform 0.1s;
+  display: inline-block;
+  flex-shrink: 0;
+}
 .tool.open .tool-head::before { transform: rotate(90deg); }
-.tool-name { color: var(--accent); font-weight: 600; }
-.tool-arg { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tool-arg.preview { color: var(--muted); }
-.tool-body { display: none; padding: 0.5em 0.625em; border-top: 1px solid var(--border); }
+.tool-name { color: var(--accent); font-weight: 600; flex-shrink: 0; }
+.tool-arg { color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-body {
+  display: none;
+  padding: 0.25em 0.625em 0.5em 1.625em;
+}
 .tool.open .tool-body { display: block; }
 .tool-body pre {
   background: var(--codeBg);
-  padding: 0.5em 0.625em;
+  padding: 0.375em 0.5em;
   border-radius: 0.25em;
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
   font-size: 0.8125em;
-  margin: 0.25em 0;
+  margin: 0.1875em 0;
 }
 .tool-result-label {
   font-size: 0.6875em;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-top: 0.375em;
+  margin-top: 0.25em;
 }
 
 /* Diff */
@@ -316,28 +334,38 @@ code, pre, kbd, samp, .mono {
 
 /* Subagent */
 .subagent {
-  margin: 0.375em 0;
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--warn);
+  margin: 0.25em 0;
+  background: var(--subBg);
+  border-left: 2px solid var(--warn);
   border-radius: 0.375em;
-  background: var(--panel2);
   overflow: hidden;
 }
-.subagent.open .subagent-body { display: block; }
 .subagent-head {
   cursor: pointer;
-  padding: 0.375em 0.625em;
+  padding: 0.25em 0.625em;
   font-size: 0.8125em;
-  display: flex; align-items: center; gap: 0.5em;
+  display: flex; align-items: baseline; gap: 0.5em;
   font-family: ui-monospace, monospace;
   user-select: none;
 }
-.subagent-head::before { content: "▶"; font-size: 0.625em; color: var(--warn); transition: transform 0.1s; }
+.subagent-head::before {
+  content: "▸";
+  font-size: 0.75em;
+  color: var(--warn);
+  transition: transform 0.1s;
+  display: inline-block;
+  flex-shrink: 0;
+}
 .subagent.open .subagent-head::before { transform: rotate(90deg); }
-.subagent-label { color: var(--warn); font-weight: 600; }
-.subagent-desc { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.subagent-body { display: none; padding: 0.5em 0.625em; border-top: 1px solid var(--border); background: var(--bg); }
-.subagent .entry { margin: 0.5em 0; }
+.subagent-label { color: var(--warn); font-weight: 600; flex-shrink: 0; }
+.subagent-desc { color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subagent-body {
+  display: none;
+  padding: 0.25em 0.625em 0.5em 1.625em;
+}
+.subagent.open .subagent-body { display: block; }
+.subagent .entry { margin: 0.125em 0; }
+.subagent .entry.first-of-run { margin-top: 0.5em; }
 
 /* Stop reasons, errors */
 .stop-reason { font-size: 0.75em; color: var(--dim); margin-top: 0.25em; }
@@ -602,21 +630,22 @@ function renderSubagent(sub, parentBlock) {
   ]);
   card.appendChild(head);
   const body = el("div", { class: "subagent-body" });
-  for (const e of (sub.entries || [])) {
-    const node = renderEntry(e);
-    if (node) body.appendChild(node);
-  }
+  renderRun(sub.entries || [], body);
   card.appendChild(body);
   return card;
 }
 
 // ---------- entry renderer ----------
-function renderEntry(e) {
+function renderEntry(e, opts) {
   if (!e) return null;
   const t = e.type;
   if (t !== "user" && t !== "assistant") return null;
   const isUser = t === "user";
-  const wrap = el("div", { class: "entry", data: { kind: t, uuid: e.uuid || "" } });
+  const firstOfRun = !opts || opts.firstOfRun !== false;
+  const wrap = el("div", {
+    class: "entry " + (firstOfRun ? "first-of-run " : "") + (isUser ? "user" : "asst"),
+    data: { kind: t, uuid: e.uuid || "" },
+  });
 
   // Skip pure tool_result-only user messages (already rendered inline with tool call)
   if (isUser && e.message && Array.isArray(e.message.content)) {
@@ -624,11 +653,13 @@ function renderEntry(e) {
     if (onlyToolResults) return null;
   }
 
-  const meta = el("div", { class: "meta" }, [
-    el("span", { class: "role-label " + (isUser ? "role-user" : "role-asst"), text: isUser ? "User" : "Assistant" }),
-    el("span", { text: fmtTime(e.timestamp) }),
-  ]);
-  wrap.appendChild(meta);
+  if (firstOfRun) {
+    const meta = el("div", { class: "meta" }, [
+      el("span", { class: "role-label " + (isUser ? "role-user" : "role-asst"), text: isUser ? "You" : "Claude" }),
+      el("span", { text: fmtTime(e.timestamp) }),
+    ]);
+    wrap.appendChild(meta);
+  }
 
   const bubble = el("div", { class: "bubble " + (isUser ? "user" : "asst") });
 
@@ -664,13 +695,29 @@ function renderEntry(e) {
 }
 
 // ---------- mount ----------
+function isVisible(e) {
+  if (!e || (e.type !== "user" && e.type !== "assistant")) return false;
+  if (e.type === "user" && e.message && Array.isArray(e.message.content)) {
+    return !e.message.content.every(b => b.type === "tool_result");
+  }
+  return true;
+}
+function renderRun(entries, into) {
+  let prevRole = null;
+  for (const e of entries) {
+    if (!isVisible(e)) continue;
+    const firstOfRun = e.type !== prevRole;
+    const node = renderEntry(e, { firstOfRun });
+    if (node) {
+      into.appendChild(node);
+      prevRole = e.type;
+    }
+  }
+}
 function mount() {
   const messages = document.getElementById("messages");
   messages.innerHTML = "";
-  for (const e of DATA.entries) {
-    const node = renderEntry(e);
-    if (node) messages.appendChild(node);
-  }
+  renderRun(DATA.entries, messages);
   // Orphan subagents appendix
   const orphans = (DATA.orphanSubagents || []).filter(id => DATA.subagents[id]);
   if (orphans.length) {
