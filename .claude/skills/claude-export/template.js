@@ -12,7 +12,7 @@ const CSS = `
   --dim:       #6e6e72;
   --border:    #2f2f37;
   --accent:    #8abeb7;
-  --accent2:   #81a2be;
+  --accent2:   #d4a27f;
   --good:      #b5bd68;
   --bad:       #cc6666;
   --warn:      #f0c674;
@@ -180,7 +180,6 @@ body * { font-size: inherit; font-family: inherit; }
 
 /* Entries */
 .entry {
-  margin: 0.125em 0;
   scroll-margin-top: 0.5em;
 }
 .entry.first-of-run { margin-top: 1em; }
@@ -202,11 +201,9 @@ body * { font-size: inherit; font-family: inherit; }
 .role-asst { color: var(--accent2); }
 
 .bubble { padding: 0; background: none; border: none; }
+.md { padding: 1em; }
 .bubble.user {
   background: var(--userBg);
-  border-radius: 0.375em;
-  padding: 0.5em 0.75em;
-  border-left: 2px solid var(--userAccent);
 }
 .bubble p { margin: 0.375em 0; }
 .bubble p:first-child { margin-top: 0; }
@@ -215,7 +212,7 @@ body * { font-size: inherit; font-family: inherit; }
   background: var(--codeBg);
   border: 1px solid var(--border);
   border-radius: 0.375em;
-  padding: 0.625em 0.75em;
+  padding: 1em;
   overflow-x: auto;
   margin: 0.5em 0;
 }
@@ -230,7 +227,7 @@ body * { font-size: inherit; font-family: inherit; }
 .bubble h1 { font-size: 1.25em; }
 .bubble h2 { font-size: 1.125em; }
 .bubble h3 { font-size: 1em; color: var(--warn); }
-.bubble ul, .bubble ol { padding-left: 1.5em; margin: 0.375em 0; }
+.bubble ul, .bubble ol { padding-left: 1.8em; margin: 0.375em 0; }
 .bubble li { margin: 0.1875em 0; }
 .bubble a { color: var(--link); }
 .bubble blockquote {
@@ -265,24 +262,19 @@ body * { font-size: inherit; font-family: inherit; }
   display: none;
   padding: 0.25em 0.75em 0.5em 1.625em;
   color: var(--muted);
-  font-size: 0.875em;
 }
 .thinking.open .thinking-body { display: block; }
 .thinking-body pre { white-space: pre-wrap; margin: 0; font-family: ui-monospace, monospace; font-size: 0.875em; }
 
 /* Tools */
 .tool {
-  margin: 0.1875em 0;
   background: var(--toolBg);
-  border-radius: 0.375em;
   overflow: hidden;
-  border-left: 2px solid transparent;
 }
-.tool.ok  { border-left-color: var(--good); }
-.tool.err { border-left-color: var(--bad); background: var(--toolErrBg); }
+.tool.err { background: var(--toolErrBg); }
 .tool-head {
   cursor: pointer;
-  padding: 0.25em 0.625em;
+  padding: 1em;
   font-size: 0.8125em;
   display: flex; align-items: baseline; gap: 0.5em;
   user-select: none;
@@ -302,25 +294,21 @@ body * { font-size: inherit; font-family: inherit; }
 .tool-arg { color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-body {
   display: none;
-  padding: 0.25em 0.625em 0.5em 1.625em;
+  padding: 1em;
 }
-.tool.open .tool-body { display: block; }
+.tool.open .tool-body { display: block; padding: 0 1em 1em; }
 .tool-body pre {
   background: var(--codeBg);
-  padding: 0.375em 0.5em;
   border-radius: 0.25em;
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: 0.8125em;
-  margin: 0.1875em 0;
 }
 .tool-result-label {
-  font-size: 0.6875em;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-top: 0.25em;
+  margin: 1em 0;
 }
 
 /* Diff */
@@ -332,16 +320,13 @@ body * { font-size: inherit; font-family: inherit; }
 
 /* Subagent */
 .subagent {
-  margin: 0.25em 0;
   background: var(--subBg);
-  border-left: 2px solid var(--warn);
   border-radius: 0.375em;
   overflow: hidden;
 }
 .subagent-head {
   cursor: pointer;
-  padding: 0.25em 0.625em;
-  font-size: 0.8125em;
+  padding: 1em;
   display: flex; align-items: baseline; gap: 0.5em;
   font-family: ui-monospace, monospace;
   user-select: none;
@@ -367,7 +352,7 @@ body * { font-size: inherit; font-family: inherit; }
 
 /* Stop reasons, errors */
 .stop-reason { font-size: 0.75em; color: var(--dim); margin-top: 0.25em; }
-.err-text { color: var(--bad); font-size: 0.8125em; }
+.err-text { color: var(--bad); padding: 1em; }
 
 /* Highlight */
 mark.hit { background: var(--warn); color: var(--bg); padding: 0 0.125em; border-radius: 0.125em; }
