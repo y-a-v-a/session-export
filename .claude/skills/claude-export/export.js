@@ -324,9 +324,13 @@ function buildPayload(mainFile) {
 // ---------- emit ----------
 
 function emit(payload, outPath) {
+  // The JSON is embedded inside a <script> tag. We must prevent any literal
+  // </script> or <!-- inside string values from terminating the tag, but the
+  // substitution must remain valid JSON. Using \uXXXX escapes keeps both the
+  // HTML parser and JSON.parse happy.
   const dataJson = JSON.stringify(payload)
-    .replace(/<\/script>/gi, '<\\/script>')
-    .replace(/<!--/g, '<\\!--');
+    .replace(/<\/script>/gi, '\\u003c/script>')
+    .replace(/<!--/g, '\\u003c!--');
   const html = TEMPLATE.replace('/*__DATA__*/', () => dataJson);
   fs.writeFileSync(outPath, html, 'utf8');
 }
