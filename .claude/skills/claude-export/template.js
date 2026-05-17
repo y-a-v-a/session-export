@@ -762,33 +762,42 @@ function buildTree() {
         e.message.content.every(b => b.type === "tool_result")) continue;
     const isUser = e.type === "user";
     const label = isUser ? "U" : "A";
-    let summary = "";
     const c = e.message && e.message.content;
-    if (typeof c === "string") summary = c;
-    else if (Array.isArray(c)) {
+
+    let textSummary = "";
+    let hasThinking = false;
+    const childRows = [];
+
+    if (typeof c === "string") {
+      textSummary = c;
+    } else if (Array.isArray(c)) {
       for (const b of c) {
-        if (b.type === "text") { summary = b.text || ""; break; }
-        if (b.type === "thinking" && !summary) summary = "[thinking…]";
-      }
-    }
-    summary = summary.replace(/\\s+/g, " ").trim();
-    rows.push({ kind: isUser ? "user" : "asst", text: "[" + label + "] " + summary, uuid: e.uuid, filter: isUser ? "user" : "asst" });
-    // Tools/thinking/subagents as child rows
-    if (Array.isArray(c)) {
-      for (const b of c) {
-        if (b.type === "thinking") {
-          rows.push({ kind: "think", text: "thinking", uuid: e.uuid, filter: "thinking" });
+        if (b.type === "text") {
+          if (!textSummary) textSummary = b.text || "";
+        } else if (b.type === "thinking") {
+          hasThinking = true;
         } else if (b.type === "tool_use") {
           const sub = DATA.subagentForToolUseId && DATA.subagentForToolUseId[b.id];
           if (sub) {
             const sa = DATA.subagents[sub.agentId];
-            rows.push({ kind: "sub", text: "↳ " + (sa && sa.agentType || "agent") + ": " + ((sa && sa.description) || ""), uuid: e.uuid, filter: "subagent" });
+            childRows.push({ kind: "sub", text: "↳ " + ((sa && sa.agentType) || "agent") + ": " + ((sa && sa.description) || ""), uuid: e.uuid, filter: "subagent" });
           } else {
-            rows.push({ kind: "tool", text: "↳ " + b.name + " " + (b.input && (b.input.command || b.input.file_path || b.input.pattern || b.input.url || "")).toString().slice(0, 80), uuid: e.uuid, filter: "tool" });
+            const arg = (b.input && (b.input.command || b.input.file_path || b.input.pattern || b.input.url || b.input.description || "")) || "";
+            childRows.push({ kind: "tool", text: "↳ " + b.name + " " + String(arg).slice(0, 80), uuid: e.uuid, filter: "tool" });
           }
         }
       }
     }
+    textSummary = textSummary.replace(/\\s+/g, " ").trim();
+
+    // Parent row: only when there's actual text, or when the entry is
+    // thinking-only (no tools, no text) so it doesn't vanish.
+    if (textSummary) {
+      rows.push({ kind: isUser ? "user" : "asst", text: "[" + label + "] " + textSummary, uuid: e.uuid, filter: isUser ? "user" : "asst" });
+    } else if (hasThinking && childRows.length === 0) {
+      rows.push({ kind: "think", text: "[" + label + "] [thinking…]", uuid: e.uuid, filter: isUser ? "user" : "asst" });
+    }
+    for (const cr of childRows) rows.push(cr);
   }
 
   const q = (document.querySelector(".sidebar-search").value || "").toLowerCase();
@@ -898,7 +907,6 @@ function build() {
     '<button class="filter-btn" data-f="user">user</button>',
     '<button class="filter-btn" data-f="asst">asst</button>',
     '<button class="filter-btn" data-f="tool">tools</button>',
-    '<button class="filter-btn" data-f="thinking">thinking</button>',
     '<button class="filter-btn" data-f="subagent">subagent</button>',
     '</div>',
     '</div>',
