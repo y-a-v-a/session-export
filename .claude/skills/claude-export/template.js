@@ -429,10 +429,15 @@ function el(tag, props, children) {
   }
   return e;
 }
+const TIME_FMT = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
 function fmtTime(ts) {
   if (!ts) return "";
   const d = new Date(ts);
-  return d.toLocaleString();
+  if (isNaN(d.getTime())) return "";
+  return TIME_FMT.format(d);
 }
 function fmtTokens(n) {
   if (n >= 1e6) return (n/1e6).toFixed(2) + "M";
