@@ -63,14 +63,11 @@ const CSS = `
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { background: var(--bg); color: var(--text); }
 body {
-  font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  font-size: 16px;
+  font-family: Menlo, "SF Mono", "JetBrains Mono", Consolas, "DejaVu Sans Mono", monospace;
+  font-size: 13px;
   line-height: 1.5;
 }
-code, pre, kbd, samp, .mono {
-  font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
-  font-size: 0.875em;
-}
+body * { font-size: inherit; font-family: inherit; }
 
 #app { display: flex; min-height: 100vh; }
 
