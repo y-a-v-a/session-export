@@ -68,6 +68,7 @@ body {
   line-height: 1.5;
 }
 body * { font-size: inherit; font-family: inherit; }
+#content, #content * { font-size: 1em; }
 
 #app { display: flex; min-height: 100vh; }
 
@@ -445,6 +446,11 @@ function fmtTokens(n) {
   return String(n);
 }
 function fmtCost(c) { return "$" + c.toFixed(c < 1 ? 4 : 2); }
+function relPath(s) {
+  const cwd = DATA.header && DATA.header.cwd;
+  if (!cwd || !s) return s || "";
+  return String(s).split(cwd + "/").join("./").split(cwd).join(".");
+}
 
 // ---------- markdown (tiny subset) ----------
 function md(src) {
@@ -608,7 +614,7 @@ function renderToolCall(block) {
   const card = el("div", { class: "tool " + status, data: { kind: "tool", tool: name } });
   const head = el("div", { class: "tool-head", onclick: () => card.classList.toggle("open") }, [
     el("span", { class: "tool-name", text: name }),
-    el("span", { class: "tool-arg", text: arg }),
+    el("span", { class: "tool-arg", text: relPath(arg) }),
   ]);
   card.appendChild(head);
   const body = el("div", { class: "tool-body" });
@@ -759,11 +765,6 @@ function renderHead() {
 }
 
 // ---------- sidebar tree ----------
-function relPath(s) {
-  const cwd = DATA.header && DATA.header.cwd;
-  if (!cwd || !s) return s || "";
-  return String(s).split(cwd + "/").join("./").split(cwd).join(".");
-}
 function buildTree() {
   const tree = document.getElementById("tree");
   tree.innerHTML = "";
