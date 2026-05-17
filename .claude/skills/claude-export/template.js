@@ -752,6 +752,11 @@ function renderHead() {
 }
 
 // ---------- sidebar tree ----------
+function relPath(s) {
+  const cwd = DATA.header && DATA.header.cwd;
+  if (!cwd || !s) return s || "";
+  return String(s).split(cwd + "/").join("./").split(cwd).join(".");
+}
 function buildTree() {
   const tree = document.getElementById("tree");
   tree.innerHTML = "";
@@ -780,10 +785,10 @@ function buildTree() {
           const sub = DATA.subagentForToolUseId && DATA.subagentForToolUseId[b.id];
           if (sub) {
             const sa = DATA.subagents[sub.agentId];
-            childRows.push({ kind: "sub", text: "↳ " + ((sa && sa.agentType) || "agent") + ": " + ((sa && sa.description) || ""), uuid: e.uuid, filter: "subagent" });
+            childRows.push({ kind: "sub", text: "↳ " + ((sa && sa.agentType) || "agent") + ": " + relPath((sa && sa.description) || ""), uuid: e.uuid, filter: "subagent" });
           } else {
             const arg = (b.input && (b.input.command || b.input.file_path || b.input.pattern || b.input.url || b.input.description || "")) || "";
-            childRows.push({ kind: "tool", text: "↳ " + b.name + " " + String(arg).slice(0, 80), uuid: e.uuid, filter: "tool" });
+            childRows.push({ kind: "tool", text: "↳ " + b.name + " " + relPath(String(arg)).slice(0, 80), uuid: e.uuid, filter: "tool" });
           }
         }
       }
