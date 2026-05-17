@@ -668,10 +668,12 @@ function renderEntry(e, opts) {
       if (b.type === "text") {
         bubble.appendChild(renderText(b.text || ""));
       } else if (b.type === "thinking") {
+        const text = (b.thinking || "").trim();
+        if (!text) continue;
         const th = el("div", { class: "thinking", data: { kind: "thinking" } });
         const th_head = el("div", { class: "thinking-head", onclick: () => th.classList.toggle("open") }, "thinking");
         th.appendChild(th_head);
-        th.appendChild(el("div", { class: "thinking-body" }, [el("pre", { text: b.thinking || "" })]));
+        th.appendChild(el("div", { class: "thinking-body" }, [el("pre", { text: text })]));
         bubble.appendChild(th);
       } else if (b.type === "tool_use") {
         bubble.appendChild(renderToolCall(b));
@@ -780,7 +782,7 @@ function buildTree() {
         if (b.type === "text") {
           if (!textSummary) textSummary = b.text || "";
         } else if (b.type === "thinking") {
-          hasThinking = true;
+          if ((b.thinking || "").trim()) hasThinking = true;
         } else if (b.type === "tool_use") {
           const sub = DATA.subagentForToolUseId && DATA.subagentForToolUseId[b.id];
           if (sub) {
