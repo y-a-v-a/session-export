@@ -385,8 +385,37 @@ const SCAFFOLD = `
 
 const CLIENT_JS = `
 "use strict";
-const RAW = document.getElementById("session-data").textContent;
-const DATA = JSON.parse(RAW);
+
+// ---------- payload load + normalize ----------
+function bail(msg) {
+  document.body.innerHTML =
+    '<pre style="color:#cc6666;padding:1em;font-family:Menlo,monospace;white-space:pre-wrap">' +
+    'claude-export: ' + String(msg).replace(/[<&]/g, c => c === "<" ? "&lt;" : "&amp;") +
+    '</pre>';
+}
+const dataEl = document.getElementById("session-data");
+let DATA;
+try {
+  if (!dataEl) throw new Error("missing #session-data script tag");
+  DATA = JSON.parse(dataEl.textContent || "{}");
+} catch (err) {
+  bail("failed to load session payload — " + (err && err.message || err));
+  throw err;
+}
+DATA = DATA || {};
+DATA.header = DATA.header || {};
+DATA.header.totals = Object.assign(
+  { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, estCostUSD: 0 },
+  DATA.header.totals || {}
+);
+DATA.entries = Array.isArray(DATA.entries) ? DATA.entries : [];
+DATA.subagents = (DATA.subagents && typeof DATA.subagents === "object") ? DATA.subagents : {};
+DATA.subagentForToolUseId = (DATA.subagentForToolUseId && typeof DATA.subagentForToolUseId === "object") ? DATA.subagentForToolUseId : {};
+DATA.orphanSubagents = Array.isArray(DATA.orphanSubagents) ? DATA.orphanSubagents : [];
+
+// ---------- safe localStorage (Safari private, sandboxed iframes) ----------
+function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch {} }
 
 // ---------- helpers ----------
 function escapeHtml(s) {
@@ -702,7 +731,14 @@ function renderRun(entries, into) {
   for (const e of entries) {
     if (!isVisible(e)) continue;
     const firstOfRun = e.type !== prevRole;
-    const node = renderEntry(e, { firstOfRun });
+    let node = null;
+    try {
+      node = renderEntry(e, { firstOfRun });
+    } catch (err) {
+      node = el("div", { class: "entry" }, [
+        el("div", { class: "err-text", text: "[render error: " + (err && err.message || err) + "]" }),
+      ]);
+    }
     if (node) {
       into.appendChild(node);
       prevRole = e.type;
@@ -711,6 +747,7 @@ function renderRun(entries, into) {
 }
 function mount() {
   const messages = document.getElementById("messages");
+  if (!messages) return;
   messages.innerHTML = "";
   renderRun(DATA.entries, messages);
   // Orphan subagents appendix
@@ -730,28 +767,31 @@ function mount() {
 // ---------- header ----------
 function renderHead() {
   const H = DATA.header;
+  const T = H.totals;
+  const messageCount = H.messageCount != null ? H.messageCount : 0;
   const hm = document.getElementById("head-meta");
-  const dur = (H.firstTimestamp && H.lastTimestamp)
-    ? ((new Date(H.lastTimestamp) - new Date(H.firstTimestamp)) / 1000)
-    : 0;
-  hm.innerHTML =
-    '<span><b>cwd:</b>' + escapeHtml(H.cwd || "") + '</span>' +
-    (H.gitBranch ? '<span><b>branch:</b>' + escapeHtml(H.gitBranch) + '</span>' : '') +
-    '<span><b>msgs:</b>' + H.messageCount + '</span>' +
-    '<span><b>tokens:</b>' + fmtTokens(H.totals.input + H.totals.output) +
-      ' (' + fmtTokens(H.totals.input) + ' in / ' + fmtTokens(H.totals.output) + ' out, cache ' +
-      fmtTokens(H.totals.cacheRead) + 'r/' + fmtTokens(H.totals.cacheWrite) + 'w)</span>' +
-    '<span><b>cost~</b>' + fmtCost(H.totals.estCostUSD) + '</span>' +
-    (H.model ? '<span><b>model:</b>' + escapeHtml(H.model) + '</span>' : '') +
-    '<span><b>session:</b><span class="mono" style="font-size:0.875em">' + escapeHtml(H.sessionId) + '</span></span>';
-
-  document.querySelector(".sidebar-head h1").textContent = "Claude Code session";
-  document.querySelector(".sidebar-head .session-id").textContent = H.sessionId;
+  if (hm) {
+    hm.innerHTML =
+      '<span><b>cwd:</b>' + escapeHtml(H.cwd || "") + '</span>' +
+      (H.gitBranch ? '<span><b>branch:</b>' + escapeHtml(H.gitBranch) + '</span>' : '') +
+      '<span><b>msgs:</b>' + messageCount + '</span>' +
+      '<span><b>tokens:</b>' + fmtTokens(T.input + T.output) +
+        ' (' + fmtTokens(T.input) + ' in / ' + fmtTokens(T.output) + ' out, cache ' +
+        fmtTokens(T.cacheRead) + 'r/' + fmtTokens(T.cacheWrite) + 'w)</span>' +
+      '<span><b>cost~</b>' + fmtCost(T.estCostUSD || 0) + '</span>' +
+      (H.model ? '<span><b>model:</b>' + escapeHtml(H.model) + '</span>' : '') +
+      '<span><b>session:</b><span class="mono" style="font-size:0.875em">' + escapeHtml(H.sessionId || "") + '</span></span>';
+  }
+  const h1 = document.querySelector(".sidebar-head h1");
+  if (h1) h1.textContent = "Claude Code session";
+  const sid = document.querySelector(".sidebar-head .session-id");
+  if (sid) sid.textContent = H.sessionId || "";
 }
 
 // ---------- sidebar tree ----------
 function buildTree() {
   const tree = document.getElementById("tree");
+  if (!tree) return;
   tree.innerHTML = "";
   const rows = [];
   for (const e of DATA.entries) {
@@ -798,7 +838,8 @@ function buildTree() {
     for (const cr of childRows) rows.push(cr);
   }
 
-  const q = (document.querySelector(".sidebar-search").value || "").toLowerCase();
+  const search = document.querySelector(".sidebar-search");
+  const q = ((search && search.value) || "").toLowerCase();
   const activeFilters = [...document.querySelectorAll(".filter-btn.active")].map(b => b.dataset.f);
   for (const r of rows) {
     if (activeFilters.length && !activeFilters.includes(r.filter)) continue;
@@ -823,20 +864,22 @@ function setupFilters() {
   document.querySelectorAll(".filter-btn").forEach(b => {
     b.addEventListener("click", () => { b.classList.toggle("active"); buildTree(); });
   });
-  document.querySelector(".sidebar-search").addEventListener("input", buildTree);
+  const search = document.querySelector(".sidebar-search");
+  if (search) search.addEventListener("input", buildTree);
 }
 
 // ---------- theme ----------
 function setupTheme() {
-  const stored = localStorage.getItem("claude-export-theme");
+  const stored = lsGet("claude-export-theme");
   if (stored) document.documentElement.dataset.theme = stored;
   else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
     document.documentElement.dataset.theme = "light";
   }
-  document.getElementById("btn-theme").addEventListener("click", () => {
+  const btn = document.getElementById("btn-theme");
+  if (btn) btn.addEventListener("click", () => {
     const cur = document.documentElement.dataset.theme === "light" ? "dark" : "light";
     document.documentElement.dataset.theme = cur;
-    localStorage.setItem("claude-export-theme", cur);
+    lsSet("claude-export-theme", cur);
   });
 }
 
@@ -852,14 +895,19 @@ function toggleAll(selector) {
   list.forEach(n => n.classList.toggle("open", anyClosed));
 }
 function setupKeys() {
-  document.getElementById("btn-expand-all").addEventListener("click", () => expandAll(true));
-  document.getElementById("btn-collapse-all").addEventListener("click", () => expandAll(false));
+  const exp = document.getElementById("btn-expand-all");
+  if (exp) exp.addEventListener("click", () => expandAll(true));
+  const col = document.getElementById("btn-collapse-all");
+  if (col) col.addEventListener("click", () => expandAll(false));
   document.addEventListener("keydown", (e) => {
     if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) {
       if (e.key === "Escape") { e.target.value = ""; buildTree(); e.target.blur(); }
       return;
     }
-    if (e.key === "/") { e.preventDefault(); document.querySelector(".sidebar-search").focus(); }
+    if (e.key === "/") {
+      const search = document.querySelector(".sidebar-search");
+      if (search) { e.preventDefault(); search.focus(); }
+    }
     else if (e.key === "t") toggleAll(".thinking");
     else if (e.key === "o") toggleAll(".tool, .subagent");
     else if (e.key === "a") expandAll(true);
