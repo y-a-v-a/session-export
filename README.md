@@ -5,6 +5,8 @@ A Claude Code skill that converts a session's `.jsonl` transcript (under
 file — user/assistant turns, thinking blocks, every tool call with its
 result, and any subagent transcripts rendered inline.
 
+![Exported session, dark skin](./claude-export.png)
+
 The skill lives in `.claude/skills/claude-export/` so it can be dropped
 into any Claude Code project.
 
