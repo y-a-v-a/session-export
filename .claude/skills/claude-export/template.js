@@ -769,6 +769,9 @@ function renderHead() {
   const H = DATA.header;
   const T = H.totals;
   const messageCount = H.messageCount != null ? H.messageCount : 0;
+  const R = H.redactions || {};
+  const rTotal = Object.values(R).reduce((a, b) => a + b, 0);
+  const rDetail = Object.entries(R).map(([k, n]) => k + ':' + n).join(', ');
   const hm = document.getElementById("head-meta");
   if (hm) {
     hm.innerHTML =
@@ -780,6 +783,7 @@ function renderHead() {
         fmtTokens(T.cacheRead) + 'r/' + fmtTokens(T.cacheWrite) + 'w)</span>' +
       '<span><b>cost~</b>' + fmtCost(T.estCostUSD || 0) + '</span>' +
       (H.model ? '<span><b>model:</b>' + escapeHtml(H.model) + '</span>' : '') +
+      (rTotal ? '<span title="' + escapeHtml(rDetail) + '" style="color:var(--warn)"><b>redacted:</b>' + rTotal + '</span>' : '') +
       '<span><b>session:</b><span class="mono" style="font-size:0.875em">' + escapeHtml(H.sessionId || "") + '</span></span>';
   }
   const h1 = document.querySelector(".sidebar-head h1");
@@ -847,7 +851,7 @@ function buildTree() {
     const cls = "tree-row tr-" + r.kind;
     const row = el("div", { class: cls, text: r.text, data: { uuid: r.uuid || "" } });
     row.addEventListener("click", () => {
-      const node = document.querySelector('.entry[data-uuid="' + r.uuid + '"]');
+      const node = document.querySelector('.entry[data-uuid="' + CSS.escape(r.uuid) + '"]');
       if (node) { node.scrollIntoView({ behavior: "smooth", block: "start" }); flash(node); }
     });
     tree.appendChild(row);

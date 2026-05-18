@@ -17,14 +17,28 @@ Produces a one-page, fully offline HTML view of a Claude Code session — user t
 From inside a Claude Code project:
 
 ```
-node .claude/skills/claude-export/export.js [session-id-or-path]
+node .claude/skills/claude-export/export.js [session-id-or-path] [--no-redact]
 ```
 
 - **No argument**: auto-detects the most recently modified main session jsonl under `~/.claude/projects/<encoded-cwd>/` (skips `agent-*.jsonl` siblings and empty stubs).
 - **Session uuid**: looks up `<uuid>.jsonl` in the current project's directory.
 - **Path**: uses it directly.
+- **`--no-redact`**: disable the secret-redaction pass (see below).
 
-The script writes `claude-session-<ISO>_<sessionId>.html` to the current working directory and prints the absolute path.
+The script writes `claude-session-<ISO>_<sessionId>.html` to the current working directory and prints the absolute path. When secrets are redacted, a one-line summary is also written to stderr.
+
+## Secret redaction
+
+Before the HTML is written, every message text/thinking block, every tool input (recursively), and every tool result is scanned for well-known credential shapes and matches are replaced with `[REDACTED:<kind>]`:
+
+- `sk-ant-…` (Anthropic), `sk-…` / `sk-proj-…` (OpenAI), `sk_live_…` / `pk_live_…` / `sk_test_…` (Stripe)
+- `AKIA…` / `ASIA…` / `AIDA…` (AWS access keys)
+- `ghp_…` / `ghs_…` / `gho_…` / `ghu_…` / `ghr_…` (GitHub PATs)
+- `xoxb-…` / `xoxp-…` / `xoxa-…` / `xoxs-…` (Slack)
+- `AIza…` (Google API keys), `eyJ…eyJ….…` (JWTs)
+- `-----BEGIN … PRIVATE KEY-----` blocks
+
+Counts per kind are stored on `header.redactions` and surfaced as a yellow `redacted:<n>` chip in the exported header (hover for the breakdown). This is a heuristic pass — review your exports before sharing.
 
 ## Output
 

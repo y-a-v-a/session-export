@@ -216,6 +216,88 @@ function loadExternalToolResult(projDir, sessionId, toolUseId, content) {
   return content;
 }
 
+// ---------- secret redaction ----------
+// Best-effort scan for well-known credential shapes. Runs over message
+// text/thinking, tool inputs (recursively), and tool results so anything
+// printed by Bash or pasted into a prompt gets caught too.
+// Order matters: private-key blocks first (so their base64 body isn't
+// re-matched by other rules), anthropic before openai (both start "sk-"),
+// stripe before openai (sk_live_ vs sk-).
+const REDACTION_RULES = [
+  { name: "private-key-block", re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g },
+  { name: "anthropic-key",     re: /sk-ant-[A-Za-z0-9_-]{30,}/g },
+  { name: "stripe-key",        re: /\b(?:sk|pk|rk)_(?:live|test)_[0-9a-zA-Z]{20,}\b/g },
+  { name: "openai-key",        re: /\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b/g },
+  { name: "aws-access-key",    re: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA)[0-9A-Z]{16}\b/g },
+  { name: "github-token",      re: /\bgh[pousr]_[A-Za-z0-9]{36,}\b/g },
+  { name: "slack-token",       re: /\bxox[abopsr]-[A-Za-z0-9-]{10,}\b/g },
+  { name: "google-api-key",    re: /\bAIza[0-9A-Za-z_-]{35}\b/g },
+  { name: "jwt",               re: /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_.+/=-]{8,}\b/g },
+];
+
+function redactString(s, counts) {
+  if (typeof s !== 'string' || !s) return s;
+  for (const rule of REDACTION_RULES) {
+    s = s.replace(rule.re, () => {
+      counts[rule.name] = (counts[rule.name] || 0) + 1;
+      return `[REDACTED:${rule.name}]`;
+    });
+  }
+  return s;
+}
+
+function redactObject(obj, counts) {
+  if (!obj || typeof obj !== 'object') return;
+  for (const k of Object.keys(obj)) {
+    const v = obj[k];
+    if (typeof v === 'string') obj[k] = redactString(v, counts);
+    else if (Array.isArray(v)) {
+      for (let i = 0; i < v.length; i++) {
+        if (typeof v[i] === 'string') v[i] = redactString(v[i], counts);
+        else if (v[i] && typeof v[i] === 'object') redactObject(v[i], counts);
+      }
+    } else if (v && typeof v === 'object') redactObject(v, counts);
+  }
+}
+
+function redactEntries(entries, counts) {
+  for (const e of entries) {
+    if (!e || !e.message) continue;
+    const c = e.message.content;
+    if (typeof c === 'string') {
+      e.message.content = redactString(c, counts);
+    } else if (Array.isArray(c)) {
+      for (const b of c) {
+        if (!b || typeof b !== 'object') continue;
+        if (b.type === 'text' && typeof b.text === 'string') {
+          b.text = redactString(b.text, counts);
+        } else if (b.type === 'thinking' && typeof b.thinking === 'string') {
+          b.thinking = redactString(b.thinking, counts);
+        } else if (b.type === 'tool_use') {
+          redactObject(b.input, counts);
+        } else if (b.type === 'tool_result') {
+          if (typeof b.content === 'string') {
+            b.content = redactString(b.content, counts);
+          } else if (Array.isArray(b.content)) {
+            for (const sub of b.content) {
+              if (sub && typeof sub.text === 'string') sub.text = redactString(sub.text, counts);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+function redactPayload(payload) {
+  const counts = {};
+  redactEntries(payload.entries, counts);
+  for (const sa of Object.values(payload.subagents || {})) {
+    redactEntries(sa.entries || [], counts);
+  }
+  payload.header.redactions = counts;
+}
+
 // ---------- assemble payload ----------
 
 function buildPayload(mainFile) {
@@ -377,17 +459,26 @@ const TEMPLATE = require('./template.js')();
 
 (function main() {
   try {
-    const arg = process.argv[2];
-    const file = findSessionFile(arg);
+    const args = process.argv.slice(2);
+    const flags = new Set(args.filter(a => a.startsWith('--')));
+    const positional = args.find(a => !a.startsWith('--'));
+    const noRedact = flags.has('--no-redact');
+    const file = findSessionFile(positional);
     const payload = buildPayload(file);
     if (!payload.entries.length) {
       process.stderr.write(`warning: session ${file} produced 0 entries; output may be empty\n`);
     }
+    if (!noRedact) redactPayload(payload);
     const isoStamp = new Date().toISOString().replace(/[:.]/g, '-');
     const outName = `claude-session-${isoStamp}_${payload.header.sessionId}.html`;
     const outPath = path.resolve(process.cwd(), outName);
     emit(payload, outPath);
     process.stdout.write(outPath + '\n');
+    const total = Object.values(payload.header.redactions || {}).reduce((a, b) => a + b, 0);
+    if (total) {
+      const breakdown = Object.entries(payload.header.redactions).map(([k, n]) => `${k}:${n}`).join(', ');
+      process.stderr.write(`redacted ${total} potential secret${total === 1 ? '' : 's'} (${breakdown})\n`);
+    }
   } catch (err) {
     process.stderr.write(`claude-export: ${err.message}\n`);
     process.exit(1);

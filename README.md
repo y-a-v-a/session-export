@@ -35,16 +35,37 @@ From inside Claude Code, type the slash command — the skill's
 Or run it directly:
 
 ```sh
-node .claude/skills/claude-export/export.js [session-id-or-path]
+node .claude/skills/claude-export/export.js [session-id-or-path] [--no-redact]
 ```
 
 - **no argument** — picks the most recently modified main session
   `.jsonl` for the current `cwd`
 - **session uuid** — looks it up in the current project's directory
 - **path** — uses the file directly
+- **`--no-redact`** — skip the credential-redaction pass
 
 The HTML is written to `claude-session-<ISO>_<sessionId>.html` in the
-current directory; the absolute path is printed to stdout.
+current directory; the absolute path is printed to stdout. A
+redaction summary, if anything matched, is written to stderr.
+
+## Secret redaction
+
+By default the exporter scans every message text/thinking block, every
+tool input, and every tool result for well-known credential shapes and
+replaces matches with `[REDACTED:<kind>]`. Patterns covered:
+
+- `sk-ant-…` Anthropic, `sk-…` / `sk-proj-…` OpenAI
+- `sk_live_…` / `pk_live_…` / `sk_test_…` Stripe
+- `AKIA…` / `ASIA…` / `AIDA…` AWS access keys
+- `ghp_…` / `ghs_…` / `gho_…` / `ghu_…` / `ghr_…` GitHub PATs
+- `xoxb-…` / `xoxp-…` / `xoxa-…` / `xoxs-…` Slack
+- `AIza…` Google API keys
+- `eyJ…eyJ….…` JWTs
+- full `-----BEGIN … PRIVATE KEY-----` blocks
+
+Counts land on `header.redactions` and appear as a yellow `redacted:<n>`
+chip in the exported header (hover for the breakdown). It's a
+heuristic pass — review exports before sharing.
 
 ## What's in the HTML
 
