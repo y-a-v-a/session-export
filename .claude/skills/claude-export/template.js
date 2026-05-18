@@ -3,7 +3,35 @@
 // `/*__DATA__*/` placeholder where export.js injects the JSON payload.
 
 const CSS = `
-:root {
+:root, :root[data-theme="dark"] {
+  --bg:        #141413;
+  --panel:     #1F1E1D;
+  --panel2:    #2a2724;
+  --text:      #EBDBBF;
+  --muted:     #a89a82;
+  --dim:       #75695a;
+  --border:    #34302b;
+  --accent:    #DD765D;
+  --accent2:   #D97757;
+  --good:      #b5bd68;
+  --bad:       #cc6666;
+  --warn:      #f0c674;
+  --thinking:  #bc8a78;
+  --userBg:    #1a1817;
+  --userAccent:#3a322a;
+  --toolBg:    #1f1d1a;
+  --toolErrBg: #2a1f1d;
+  --toolOkBg:  #1f2823;
+  --thinkBg:   #1d1a17;
+  --subBg:     #1f1c16;
+  --codeBg:    #0e0d0c;
+  --diffAdd:   #1f3a1f;
+  --diffDel:   #3a1f1f;
+  --link:      #D97757;
+  --kbd-bg:    #2a2724;
+  --shadow:    0 1px 0 rgba(0,0,0,.4);
+}
+:root[data-theme="cool"] {
   --bg:        #18181e;
   --panel:     #1e1e24;
   --panel2:    #232329;
@@ -32,31 +60,31 @@ const CSS = `
   --shadow:    0 1px 0 rgba(0,0,0,.4);
 }
 :root[data-theme="light"] {
-  --bg:        #f7f7f5;
+  --bg:        #FAF9F5;
   --panel:     #ffffff;
-  --panel2:    #f0f0ee;
-  --text:      #1d1d1f;
-  --muted:     #5a5d62;
-  --dim:       #8a8d92;
-  --border:    #d8d8d2;
-  --accent:    #2a6a64;
-  --accent2:   #2b5a8a;
+  --panel2:    #EFEBDF;
+  --text:      #1F1E1D;
+  --muted:     #6b6660;
+  --dim:       #9b9690;
+  --border:    #D9D3C7;
+  --accent:    #DD765D;
+  --accent2:   #D97757;
   --good:      #2e7d32;
   --bad:       #b3261e;
   --warn:      #8a6d00;
-  --thinking:  #6a3d8a;
-  --userBg:    #ecf0f7;
-  --userAccent:#b9c4d8;
-  --toolBg:    #eef0ec;
+  --thinking:  #8a5444;
+  --userBg:    #F4EFE3;
+  --userAccent:#D9C9A8;
+  --toolBg:    #F1ECE0;
   --toolErrBg: #fbe9e7;
   --toolOkBg:  #e8f3ec;
-  --thinkBg:   #f1ecf4;
-  --subBg:     #f4eee0;
-  --codeBg:    #f4f4ef;
+  --thinkBg:   #F2EAD8;
+  --subBg:     #F4EAD0;
+  --codeBg:    #F0EBDD;
   --diffAdd:   #d8efd8;
   --diffDel:   #f6d4d4;
-  --link:      #1b5fa3;
-  --kbd-bg:    #e8e8e3;
+  --link:      #b85a3d;
+  --kbd-bg:    #EBE7DC;
   --shadow:    0 1px 0 rgba(0,0,0,.05);
 }
 
@@ -159,11 +187,11 @@ body * { font-size: inherit; font-family: inherit; }
   background: var(--panel);
   display: flex; gap: 1em; align-items: center; flex-wrap: wrap;
 }
-.head-meta { display: flex; gap: 1em; font-size: 0.8125em; color: var(--muted); flex-wrap: wrap; }
+.head-meta { display: flex; gap: 1em; color: var(--muted); flex-wrap: wrap; }
 .head-meta b { color: var(--text); font-weight: 600; margin-right: 0.25em; }
 .head-actions { margin-left: auto; display: flex; gap: 0.5em; }
 .head-actions button {
-  font: inherit; font-size: 0.8125em;
+  font: inherit;
   padding: 0.3em 0.625em;
   background: var(--panel2); color: var(--text);
   border: 1px solid var(--border); border-radius: 0.25em;
@@ -184,7 +212,6 @@ body * { font-size: inherit; font-family: inherit; }
 }
 .entry.first-of-run { margin-top: 1em; }
 .entry .meta {
-  font-size: 0.75em;
   color: var(--dim);
   margin-bottom: 0.125em;
   display: flex; gap: 0.625em; align-items: baseline;
@@ -192,7 +219,6 @@ body * { font-size: inherit; font-family: inherit; }
 }
 .role-label {
   display: inline-block;
-  font-size: 0.75em;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -250,13 +276,12 @@ body * { font-size: inherit; font-family: inherit; }
 .thinking-head {
   cursor: pointer;
   padding: 0.25em 0.625em;
-  font-size: 0.8125em;
   color: var(--thinking);
   font-style: italic;
   user-select: none;
   display: flex; align-items: center; gap: 0.375em;
 }
-.thinking-head::before { content: "▸"; font-size: 0.75em; opacity: 0.7; transition: transform 0.1s; display: inline-block; }
+.thinking-head::before { content: "▸"; opacity: 0.7; transition: transform 0.1s; display: inline-block; }
 .thinking.open .thinking-head::before { transform: rotate(90deg); }
 .thinking-body {
   display: none;
@@ -264,7 +289,7 @@ body * { font-size: inherit; font-family: inherit; }
   color: var(--muted);
 }
 .thinking.open .thinking-body { display: block; }
-.thinking-body pre { white-space: pre-wrap; margin: 0; font-family: ui-monospace, monospace; font-size: 0.875em; }
+.thinking-body pre { white-space: pre-wrap; margin: 0; font-family: ui-monospace, monospace; }
 
 /* Tools */
 .tool {
@@ -275,14 +300,12 @@ body * { font-size: inherit; font-family: inherit; }
 .tool-head {
   cursor: pointer;
   padding: 1em;
-  font-size: 0.8125em;
   display: flex; align-items: baseline; gap: 0.5em;
   user-select: none;
   font-family: ui-monospace, monospace;
 }
 .tool-head::before {
   content: "▸";
-  font-size: 0.75em;
   color: var(--muted);
   opacity: 0.7;
   transition: transform 0.1s;
@@ -313,7 +336,7 @@ body * { font-size: inherit; font-family: inherit; }
 
 /* Diff */
 .diff { border: 1px solid var(--border); border-radius: 0.25em; overflow: hidden; }
-.diff-line { padding: 0 0.5em; font-family: ui-monospace, monospace; font-size: 0.8125em; white-space: pre-wrap; }
+.diff-line { padding: 0 0.5em; font-family: ui-monospace, monospace; white-space: pre-wrap; }
 .diff-line.add { background: var(--diffAdd); }
 .diff-line.del { background: var(--diffDel); }
 .diff-line.ctx { color: var(--muted); }
@@ -333,7 +356,6 @@ body * { font-size: inherit; font-family: inherit; }
 }
 .subagent-head::before {
   content: "▸";
-  font-size: 0.75em;
   color: var(--warn);
   transition: transform 0.1s;
   display: inline-block;
@@ -351,14 +373,14 @@ body * { font-size: inherit; font-family: inherit; }
 .subagent .entry.first-of-run { margin-top: 0.5em; }
 
 /* Stop reasons, errors */
-.stop-reason { font-size: 0.75em; color: var(--dim); margin-top: 0.25em; }
+.stop-reason { color: var(--dim); margin-top: 0.25em; }
 .err-text { color: var(--bad); padding: 1em; }
 
 /* Highlight */
 mark.hit { background: var(--warn); color: var(--bg); padding: 0 0.125em; border-radius: 0.125em; }
 
 /* Keyboard help */
-kbd { background: var(--kbd-bg); padding: 0 0.3em; border-radius: 0.1875em; border: 1px solid var(--border); font-size: 0.8em; }
+kbd { background: var(--kbd-bg); padding: 0 0.3em; border-radius: 0.1875em; border: 1px solid var(--border); }
 
 /* Responsive */
 @media (max-width: 50em) {
@@ -873,17 +895,23 @@ function setupFilters() {
 }
 
 // ---------- theme ----------
+const THEMES = ["dark", "light", "cool"];
 function setupTheme() {
   const stored = lsGet("claude-export-theme");
-  if (stored) document.documentElement.dataset.theme = stored;
-  else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
-    document.documentElement.dataset.theme = "light";
-  }
+  let initial = "dark";
+  if (stored && THEMES.includes(stored)) initial = stored;
+  else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) initial = "light";
+  document.documentElement.dataset.theme = initial;
   const btn = document.getElementById("btn-theme");
-  if (btn) btn.addEventListener("click", () => {
-    const cur = document.documentElement.dataset.theme === "light" ? "dark" : "light";
-    document.documentElement.dataset.theme = cur;
-    lsSet("claude-export-theme", cur);
+  if (!btn) return;
+  function label() { btn.textContent = "Theme: " + (document.documentElement.dataset.theme || "dark"); }
+  label();
+  btn.addEventListener("click", () => {
+    const cur = document.documentElement.dataset.theme || "dark";
+    const next = THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length] || "dark";
+    document.documentElement.dataset.theme = next;
+    lsSet("claude-export-theme", next);
+    label();
   });
 }
 
