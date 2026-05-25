@@ -336,6 +336,8 @@ body * { font-size: inherit; font-family: inherit; }
   letter-spacing: 0.05em;
   margin: 1em 0;
 }
+/* TodoWrite items carry their own status glyph; drop the <ul> bullet. */
+.tool[data-tool="TodoWrite"] ul { list-style: none; padding-left: 0; }
 
 /* Diff */
 .diff { border: 1px solid var(--border); border-radius: 0.25em; overflow: hidden; }
@@ -872,7 +874,7 @@ function buildTree() {
     if (textSummary) {
       rows.push({ kind: isUser ? "user" : "asst", label, text: textSummary, uuid: e.uuid, filter: isUser ? "user" : "asst" });
     } else if (hasThinking && childRows.length === 0) {
-      rows.push({ kind: "think", label, text: "[thinking…]", uuid: e.uuid, filter: isUser ? "user" : "asst" });
+      rows.push({ kind: "think", label, text: "[thinking…]", uuid: e.uuid, filter: "think" });
     }
     for (const cr of childRows) rows.push(cr);
   }
@@ -1004,6 +1006,7 @@ function build() {
     '<button class="filter-btn active" data-f="user">user</button>',
     '<button class="filter-btn active" data-f="asst">asst</button>',
     '<button class="filter-btn" data-f="tool">tools</button>',
+    '<button class="filter-btn" data-f="think">think</button>',
     '<button class="filter-btn" data-f="subagent">subagent</button>',
     '</div>',
     '</div>',

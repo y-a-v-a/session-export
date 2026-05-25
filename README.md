@@ -7,6 +7,12 @@ result, and any subagent transcripts rendered inline.
 
 ![Exported session, dark skin](./claude-export.png)
 
+Dark theme
+
+![Exported session, light skin](./claude-export-2.png)
+
+Light theme
+
 The skill lives in `.claude/skills/claude-export/` so it can be dropped
 into any Claude Code project.
 
