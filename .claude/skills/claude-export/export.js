@@ -315,15 +315,21 @@ function buildPayload(mainFile) {
   const subs = loadSubagents(projDir, sessionId);
   const inlineProgress = collectInlineProgressAgents(entries);
 
-  // Expand external tool-result references (in-place into the entries array).
-  for (const e of entries) {
-    if (!e.message || !Array.isArray(e.message.content)) continue;
-    for (const b of e.message.content) {
-      if (b.type === 'tool_result') {
-        b.content = loadExternalToolResult(projDir, sessionId, b.tool_use_id, b.content);
+  // Expand external tool-result references in place — for the main entries and
+  // for every subagent's entries, so the exported HTML is fully self-contained
+  // regardless of where the tool_result lived.
+  function expandToolResults(es) {
+    for (const e of es) {
+      if (!e.message || !Array.isArray(e.message.content)) continue;
+      for (const b of e.message.content) {
+        if (b.type === 'tool_result') {
+          b.content = loadExternalToolResult(projDir, sessionId, b.tool_use_id, b.content);
+        }
       }
     }
   }
+  expandToolResults(entries);
+  for (const sa of subs.all) expandToolResults(sa.entries);
 
   // For each Agent/Task tool_use, attach a matched subagent transcript.
   // Strategy: match by (agentType, description) consumed in order; fall back
@@ -437,13 +443,11 @@ function buildPayload(mainFile) {
 // ---------- emit ----------
 
 function emit(payload, outPath) {
-  // The JSON is embedded inside a <script> tag. We must prevent any literal
-  // </script> or <!-- inside string values from terminating the tag, but the
-  // substitution must remain valid JSON. Using \uXXXX escapes keeps both the
-  // HTML parser and JSON.parse happy.
-  const dataJson = JSON.stringify(payload)
-    .replace(/<\/script>/gi, '\\u003c/script>')
-    .replace(/<!--/g, '\\u003c!--');
+  // The JSON is embedded inside a <script> tag. HTML terminates script data on
+  // </script followed by any of [\t\n\f\r />], not just </script>, and also
+  // changes state on <!-- / <script. Escape every `<` to < — JSON.parse
+  // round-trips the string and the HTML parser never sees a `<` inside.
+  const dataJson = JSON.stringify(payload).replace(/</g, '\\u003c');
   if (!TEMPLATE.includes('/*__DATA__*/')) {
     throw new Error('template.js is missing the /*__DATA__*/ placeholder');
   }

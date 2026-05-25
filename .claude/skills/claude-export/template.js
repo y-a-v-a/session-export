@@ -7,20 +7,20 @@ const CSS = `
   --bg:        #141413;
   --panel:     #1F1E1D;
   --panel2:    #2a2724;
-  --text:      #EBDBBF;
+  --text:      #e3d8c4;
   --muted:     #a89a82;
   --dim:       #75695a;
   --border:    #34302b;
-  --accent:    #DD765D;
+  --accent:    #569CD6;
   --accent2:   #D97757;
   --good:      #b5bd68;
   --bad:       #cc6666;
   --warn:      #f0c674;
   --thinking:  #bc8a78;
-  --userBg:    #1a1817;
+  --userBg:    #2a2827;
   --userAccent:#3a322a;
-  --toolBg:    #1f1d1a;
-  --toolErrBg: #2a1f1d;
+  --toolBg:    #332e27;
+  --toolErrBg: #2f1f1d;
   --toolOkBg:  #1f2823;
   --thinkBg:   #1d1a17;
   --subBg:     #1f1c16;
@@ -30,6 +30,7 @@ const CSS = `
   --link:      #D97757;
   --kbd-bg:    #2a2724;
   --shadow:    0 1px 0 rgba(0,0,0,.4);
+  --base-padding: 1.25em;
 }
 :root[data-theme="cool"] {
   --bg:        #18181e;
@@ -67,7 +68,7 @@ const CSS = `
   --muted:     #6b6660;
   --dim:       #9b9690;
   --border:    #D9D3C7;
-  --accent:    #DD765D;
+  --accent:    #759AC8;
   --accent2:   #D97757;
   --good:      #2e7d32;
   --bad:       #b3261e;
@@ -173,11 +174,14 @@ body * { font-size: inherit; font-family: inherit; }
 }
 .tree-row:hover { background: var(--panel2); color: var(--text); }
 .tree-row.active { border-left-color: var(--accent); color: var(--text); }
-.tree-row.tr-user   { color: var(--accent); }
+.tree-row.tr-user   { color: var(--text); }
 .tree-row.tr-asst   { color: var(--text); }
 .tree-row.tr-tool   { padding-left: 1.75em; color: var(--muted); font-size: 0.75em; }
 .tree-row.tr-think  { padding-left: 1.75em; color: var(--thinking); font-size: 0.75em; font-style: italic; }
 .tree-row.tr-sub    { padding-left: 1.75em; color: var(--warn); font-size: 0.75em; }
+.tr-label           { font-weight: 600; margin-right: 0.25em; }
+.tr-label-user      { color: var(--accent); }
+.tr-label-asst      { color: var(--accent2); }
 
 /* Content */
 #content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -210,10 +214,10 @@ body * { font-size: inherit; font-family: inherit; }
 .entry {
   scroll-margin-top: 0.5em;
 }
-.entry.first-of-run { margin-top: 1em; }
+
 .entry .meta {
   color: var(--dim);
-  margin-bottom: 0.125em;
+  padding: var(--base-padding);
   display: flex; gap: 0.625em; align-items: baseline;
   font-family: ui-monospace, monospace;
 }
@@ -227,7 +231,7 @@ body * { font-size: inherit; font-family: inherit; }
 .role-asst { color: var(--accent2); }
 
 .bubble { padding: 0; background: none; border: none; }
-.md { padding: 1em; }
+.md { padding: var(--base-padding); }
 .bubble.user {
   background: var(--userBg);
 }
@@ -237,8 +241,8 @@ body * { font-size: inherit; font-family: inherit; }
 .bubble pre {
   background: var(--codeBg);
   border: 1px solid var(--border);
-  border-radius: 0.375em;
-  padding: 1em;
+  border-radius: 0.25em;
+  padding: var(--base-padding);
   overflow-x: auto;
   margin: 0.5em 0;
 }
@@ -268,14 +272,12 @@ body * { font-size: inherit; font-family: inherit; }
 
 /* Thinking */
 .thinking {
-  margin: 0.1875em 0;
   background: var(--thinkBg);
-  border-radius: 0.375em;
   overflow: hidden;
 }
 .thinking-head {
   cursor: pointer;
-  padding: 0.25em 0.625em;
+  padding: var(--base-padding);
   color: var(--thinking);
   font-style: italic;
   user-select: none;
@@ -285,7 +287,7 @@ body * { font-size: inherit; font-family: inherit; }
 .thinking.open .thinking-head::before { transform: rotate(90deg); }
 .thinking-body {
   display: none;
-  padding: 0.25em 0.75em 0.5em 1.625em;
+  padding: var(--base-padding);
   color: var(--muted);
 }
 .thinking.open .thinking-body { display: block; }
@@ -299,12 +301,12 @@ body * { font-size: inherit; font-family: inherit; }
 .tool.err { background: var(--toolErrBg); }
 .tool-head {
   cursor: pointer;
-  padding: 1em;
+  padding: var(--base-padding);
   display: flex; align-items: baseline; gap: 0.5em;
   user-select: none;
   font-family: ui-monospace, monospace;
 }
-.tool-head::before {
+.tool-head::after {
   content: "▸";
   color: var(--muted);
   opacity: 0.7;
@@ -312,12 +314,12 @@ body * { font-size: inherit; font-family: inherit; }
   display: inline-block;
   flex-shrink: 0;
 }
-.tool.open .tool-head::before { transform: rotate(90deg); }
-.tool-name { color: var(--accent); font-weight: 600; flex-shrink: 0; }
+.tool.open .tool-head::after { transform: rotate(90deg); }
+.tool-name { color: var(--accent2); font-weight: 600; flex-shrink: 0; }
 .tool-arg { color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-body {
   display: none;
-  padding: 1em;
+  padding: var(--base-padding);
 }
 .tool.open .tool-body { display: block; padding: 0 1em 1em; }
 .tool-body pre {
@@ -344,12 +346,11 @@ body * { font-size: inherit; font-family: inherit; }
 /* Subagent */
 .subagent {
   background: var(--subBg);
-  border-radius: 0.375em;
   overflow: hidden;
 }
 .subagent-head {
   cursor: pointer;
-  padding: 1em;
+  padding: var(--base-padding);
   display: flex; align-items: baseline; gap: 0.5em;
   font-family: ui-monospace, monospace;
   user-select: none;
@@ -366,15 +367,15 @@ body * { font-size: inherit; font-family: inherit; }
 .subagent-desc { color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .subagent-body {
   display: none;
-  padding: 0.25em 0.625em 0.5em 1.625em;
+  padding: var(--base-padding);
 }
 .subagent.open .subagent-body { display: block; }
-.subagent .entry { margin: 0.125em 0; }
-.subagent .entry.first-of-run { margin-top: 0.5em; }
+.subagent .entry { }
+.subagent .entry.first-of-run { }
 
 /* Stop reasons, errors */
 .stop-reason { color: var(--dim); margin-top: 0.25em; }
-.err-text { color: var(--bad); padding: 1em; }
+.err-text { color: var(--bad); padding: var(--base-padding); }
 
 /* Highlight */
 mark.hit { background: var(--warn); color: var(--bg); padding: 0 0.125em; border-radius: 0.125em; }
@@ -448,6 +449,13 @@ function escapeHtml(s) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+function isSafeUrl(u) {
+  if (typeof u !== "string") return false;
+  const m = u.match(/^([a-z][a-z0-9+.-]*):/i);
+  if (!m) return true; // relative URL, anchor, query — no scheme.
+  const scheme = m[1].toLowerCase();
+  return scheme === "http" || scheme === "https" || scheme === "mailto";
 }
 function el(tag, props, children) {
   const e = document.createElement(tag);
@@ -527,8 +535,12 @@ function md(src) {
   s = s.replace(/\\*\\*([^*\\n]+)\\*\\*/g, "<strong>$1</strong>");
   s = s.replace(/\\*([^*\\n]+)\\*/g, "<em>$1</em>");
   s = s.replace(/(?<![A-Za-z0-9_])_([^_\\n]+)_(?![A-Za-z0-9_])/g, "<em>$1</em>");
-  // Links
-  s = s.replace(/\\[([^\\]]+)\\]\\(([^)\\s]+)\\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // Links — only http(s)/mailto/relative; drop javascript: and unsafe data:.
+  s = s.replace(/\\[([^\\]]+)\\]\\(([^)\\s]+)\\)/g, (m, text, url) => {
+    return isSafeUrl(url)
+      ? '<a href="' + url + '" target="_blank" rel="noopener">' + text + '</a>'
+      : m;
+  });
   // Paragraphs: split on blank lines, wrap non-block lines
   s = s.split(/\\n{2,}/).map(chunk => {
     if (/^\\s*<(h\\d|ul|ol|hr|blockquote|pre|table)/.test(chunk)) return chunk;
@@ -669,7 +681,7 @@ function renderToolCall(block) {
 function renderSubagent(sub, parentBlock) {
   const card = el("div", { class: "subagent", data: { kind: "sub" } });
   const head = el("div", { class: "subagent-head", onclick: () => card.classList.toggle("open") }, [
-    el("span", { class: "subagent-label", text: "▷ agent: " + (sub.agentType || "subagent") }),
+    el("span", { class: "subagent-label", text: "agent: " + (sub.agentType || "subagent") }),
     el("span", { class: "subagent-desc", text: sub.description || (parentBlock && parentBlock.input && parentBlock.input.description) || sub.agentId }),
   ]);
   card.appendChild(head);
@@ -776,9 +788,9 @@ function mount() {
   const orphans = (DATA.orphanSubagents || []).filter(id => DATA.subagents[id]);
   if (orphans.length) {
     const h = el("h2", { text: "Unattached subagents" });
-    h.style.marginTop = "2em";
+    h.style.margin = "1em";
     h.style.color = "var(--warn)";
-    h.style.fontSize = "0.9em";
+    h.style.fontSize = "1.1em";
     messages.appendChild(h);
     for (const id of orphans) {
       messages.appendChild(renderSubagent(DATA.subagents[id], null));
@@ -857,9 +869,9 @@ function buildTree() {
     // Parent row: only when there's actual text, or when the entry is
     // thinking-only (no tools, no text) so it doesn't vanish.
     if (textSummary) {
-      rows.push({ kind: isUser ? "user" : "asst", text: "[" + label + "] " + textSummary, uuid: e.uuid, filter: isUser ? "user" : "asst" });
+      rows.push({ kind: isUser ? "user" : "asst", label, text: textSummary, uuid: e.uuid, filter: isUser ? "user" : "asst" });
     } else if (hasThinking && childRows.length === 0) {
-      rows.push({ kind: "think", text: "[" + label + "] [thinking…]", uuid: e.uuid, filter: isUser ? "user" : "asst" });
+      rows.push({ kind: "think", label, text: "[thinking…]", uuid: e.uuid, filter: isUser ? "user" : "asst" });
     }
     for (const cr of childRows) rows.push(cr);
   }
@@ -871,7 +883,13 @@ function buildTree() {
     if (activeFilters.length && !activeFilters.includes(r.filter)) continue;
     if (q && !r.text.toLowerCase().includes(q)) continue;
     const cls = "tree-row tr-" + r.kind;
-    const row = el("div", { class: cls, text: r.text, data: { uuid: r.uuid || "" } });
+    const children = [];
+    if (r.label) {
+      const side = r.filter === "user" ? "user" : "asst";
+      children.push(el("span", { class: "tr-label tr-label-" + side, text: "[" + r.label + "]" }));
+    }
+    children.push(r.text);
+    const row = el("div", { class: cls, data: { uuid: r.uuid || "" } }, children);
     row.addEventListener("click", () => {
       const node = document.querySelector('.entry[data-uuid="' + CSS.escape(r.uuid) + '"]');
       if (node) { node.scrollIntoView({ behavior: "smooth", block: "start" }); flash(node); }
