@@ -214,6 +214,7 @@ body * { font-size: inherit; font-family: inherit; }
 .entry {
   scroll-margin-top: 0.5em;
 }
+.entry.first-of-run { margin-top: 2.5em; }
 
 .entry .meta {
   color: var(--dim);
@@ -371,7 +372,7 @@ body * { font-size: inherit; font-family: inherit; }
 }
 .subagent.open .subagent-body { display: block; }
 .subagent .entry { }
-.subagent .entry.first-of-run { }
+.subagent .entry.first-of-run { margin-top: 2.5em; }
 
 /* Stop reasons, errors */
 .stop-reason { color: var(--dim); margin-top: 0.25em; }
