@@ -103,14 +103,51 @@ body * { font-size: inherit; font-family: inherit; }
 
 /* Sidebar */
 #sidebar {
-  width: 22em;
-  min-width: 16em;
+  width: var(--sidebar-width, 22em);
+  min-width: 12em;
+  max-width: 60vw;
   background: var(--panel);
   border-right: 1px solid var(--border);
   position: sticky; top: 0; height: 100vh;
   display: flex; flex-direction: column;
   flex-shrink: 0;
+  transition: margin-left 0.25s ease, opacity 0.2s ease;
 }
+.sidebar-resize {
+  position: absolute;
+  top: 0; right: -3px; bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 5;
+  background: transparent;
+  transition: background 0.15s;
+}
+.sidebar-resize:hover,
+.sidebar-resize.dragging { background: var(--accent); }
+#app.sidebar-collapsed #sidebar {
+  margin-left: calc(-1 * var(--sidebar-width, 22em));
+  opacity: 0;
+  pointer-events: none;
+}
+.sidebar-backdrop {
+  display: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  #sidebar, .sidebar-backdrop { transition: none; }
+}
+.sidebar-toggle {
+  font: inherit;
+  padding: 0.3em 0.55em;
+  background: var(--panel2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 0.25em;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.sidebar-toggle:hover { border-color: var(--accent); }
 .sidebar-head {
   padding: 0.75em 0.875em;
   border-bottom: 1px solid var(--border);
@@ -374,7 +411,8 @@ body * { font-size: inherit; font-family: inherit; }
 }
 .subagent.open .subagent-body { display: block; }
 .subagent .entry { }
-.subagent .entry.first-of-run { margin-top: 2.5em; }
+.subagent .entry.first-of-run { }
+.subagent .entry.first-of-run .meta { padding-top: 0; }
 
 /* Stop reasons, errors */
 .stop-reason { color: var(--dim); margin-top: 0.25em; }
@@ -388,17 +426,38 @@ kbd { background: var(--kbd-bg); padding: 0 0.3em; border-radius: 0.1875em; bord
 
 /* Responsive */
 @media (max-width: 50em) {
-  #sidebar { display: none; }
-  #app.show-sidebar #sidebar {
+  #sidebar {
     display: flex;
     position: fixed; left: 0; top: 0; bottom: 0; z-index: 10;
     width: 80vw; max-width: 22em;
+    min-width: 0;
+    margin-left: 0;
+    opacity: 1;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    pointer-events: none;
   }
+  #app.show-sidebar #sidebar {
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+  .sidebar-backdrop {
+    display: block;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 9;
+  }
+  #app.show-sidebar .sidebar-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .sidebar-resize { display: none; }
 }
 `;
 
 const SCAFFOLD = `
 <header class="app-head">
+  <button class="sidebar-toggle" id="btn-toggle-sidebar" aria-label="Toggle sidebar" title="Toggle sidebar (b)">☰</button>
   <div class="head-meta" id="head-meta"></div>
   <div class="head-actions">
     <button id="btn-expand-all" title="Expand all (a)">Expand all</button>
@@ -936,6 +995,78 @@ function setupTheme() {
   });
 }
 
+// ---------- sidebar: collapse + drag-resize ----------
+function isSmallViewport() {
+  return window.matchMedia && window.matchMedia("(max-width: 50em)").matches;
+}
+function toggleSidebar() {
+  const app = document.getElementById("app");
+  if (!app) return;
+  if (isSmallViewport()) {
+    app.classList.toggle("show-sidebar");
+  } else {
+    app.classList.toggle("sidebar-collapsed");
+    lsSet("claude-export-sidebar-collapsed", app.classList.contains("sidebar-collapsed") ? "1" : "0");
+  }
+}
+function setupSidebar() {
+  const app = document.getElementById("app");
+  if (!app) return;
+  if (!isSmallViewport()) {
+    if (lsGet("claude-export-sidebar-collapsed") === "1") {
+      app.classList.add("sidebar-collapsed");
+    }
+    const w = lsGet("claude-export-sidebar-width");
+    if (w) document.documentElement.style.setProperty("--sidebar-width", w);
+  }
+  const btn = document.getElementById("btn-toggle-sidebar");
+  if (btn) btn.addEventListener("click", toggleSidebar);
+  const backdrop = document.getElementById("sidebar-backdrop");
+  if (backdrop) backdrop.addEventListener("click", () => app.classList.remove("show-sidebar"));
+
+  const handle = document.querySelector(".sidebar-resize");
+  if (handle) {
+    let dragging = false;
+    const start = (e) => {
+      if (isSmallViewport()) return;
+      dragging = true;
+      handle.classList.add("dragging");
+      document.body.style.userSelect = "none";
+      document.body.style.cursor = "col-resize";
+      if (e.cancelable) e.preventDefault();
+    };
+    const move = (x) => {
+      if (!dragging) return;
+      const w = Math.max(200, Math.min(window.innerWidth * 0.5, x));
+      document.documentElement.style.setProperty("--sidebar-width", w + "px");
+    };
+    const end = () => {
+      if (!dragging) return;
+      dragging = false;
+      handle.classList.remove("dragging");
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      const v = document.documentElement.style.getPropertyValue("--sidebar-width");
+      if (v) lsSet("claude-export-sidebar-width", v.trim());
+    };
+    handle.addEventListener("mousedown", start);
+    document.addEventListener("mousemove", (e) => move(e.clientX));
+    document.addEventListener("mouseup", end);
+    handle.addEventListener("touchstart", start, { passive: false });
+    document.addEventListener("touchmove", (e) => { if (dragging) move(e.touches[0].clientX); }, { passive: true });
+    document.addEventListener("touchend", end);
+    handle.addEventListener("dblclick", () => {
+      document.documentElement.style.removeProperty("--sidebar-width");
+      lsSet("claude-export-sidebar-width", "");
+    });
+  }
+
+  window.addEventListener("resize", () => {
+    if (isSmallViewport()) app.classList.remove("sidebar-collapsed");
+    else app.classList.remove("show-sidebar");
+  });
+}
+
 // ---------- expand / collapse / keyboard ----------
 function expandAll(yes) {
   for (const c of document.querySelectorAll(".thinking, .tool, .subagent")) {
@@ -965,6 +1096,7 @@ function setupKeys() {
     else if (e.key === "o") toggleAll(".tool, .subagent");
     else if (e.key === "a") expandAll(true);
     else if (e.key === "z") expandAll(false);
+    else if (e.key === "b") toggleSidebar();
     else if (e.key === "[" || e.key === "]") {
       const entries = [...document.querySelectorAll(".entry")];
       if (!entries.length) return;
@@ -984,6 +1116,7 @@ mount();
 buildTree();
 setupFilters();
 setupKeys();
+setupSidebar();
 `;
 
 function build() {
@@ -1011,7 +1144,9 @@ function build() {
     '</div>',
     '</div>',
     '<div id="tree"></div>',
+    '<div class="sidebar-resize" aria-hidden="true" title="Drag to resize · double-click to reset"></div>',
     '</aside>',
+    '<div class="sidebar-backdrop" id="sidebar-backdrop"></div>',
     '<section id="content">', SCAFFOLD, '</section>',
     '</div>',
     '<script id="session-data" type="application/json">/*__DATA__*/</script>',
