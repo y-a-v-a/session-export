@@ -1,6 +1,14 @@
 // HTML template assembly for claude-export.
 // Exports a function returning the full single-page HTML, with a
 // `/*__DATA__*/` placeholder where export.js injects the JSON payload.
+//
+// Themes: the built-in CSS ships `dark` (default) + `light`. If a `themes.css`
+// file sits next to this module, its contents are appended to the <style> and
+// every `:root[data-theme="<name>"]` block it defines becomes an extra theme in
+// the cycle (see themes.css for the shipped `cool` example).
+
+const fs = require('fs');
+const path = require('path');
 
 const CSS = `
 :root, :root[data-theme="dark"] {
@@ -31,34 +39,6 @@ const CSS = `
   --kbd-bg:    #2a2724;
   --shadow:    0 1px 0 rgba(0,0,0,.4);
   --base-padding: 1.25em;
-}
-:root[data-theme="cool"] {
-  --bg:        #18181e;
-  --panel:     #1e1e24;
-  --panel2:    #232329;
-  --text:      #e5e5e7;
-  --muted:     #9aa0a6;
-  --dim:       #6e6e72;
-  --border:    #2f2f37;
-  --accent:    #8abeb7;
-  --accent2:   #d4a27f;
-  --good:      #b5bd68;
-  --bad:       #cc6666;
-  --warn:      #f0c674;
-  --thinking:  #b294bb;
-  --userBg:    #22252e;
-  --userAccent:#3a4255;
-  --toolBg:    #23232c;
-  --toolErrBg: #2e2024;
-  --toolOkBg:  #1f2823;
-  --thinkBg:   #1f1c25;
-  --subBg:     #25221b;
-  --codeBg:    #14141a;
-  --diffAdd:   #1f3a1f;
-  --diffDel:   #3a1f1f;
-  --link:      #81a2be;
-  --kbd-bg:    #2a2a32;
-  --shadow:    0 1px 0 rgba(0,0,0,.4);
 }
 :root[data-theme="light"] {
   --bg:        #FAF9F5;
@@ -975,7 +955,8 @@ function setupFilters() {
 }
 
 // ---------- theme ----------
-const THEMES = ["dark", "light", "cool"];
+// Theme names are injected by build() from the built-in CSS plus any themes.css.
+const THEMES = /*__THEMES__*/["dark"];
 function setupTheme() {
   const stored = lsGet("claude-export-theme");
   let initial = "dark";
@@ -1119,7 +1100,34 @@ setupKeys();
 setupSidebar();
 `;
 
+// Read an optional themes.css sitting next to this module. Returns "" if absent
+// or unreadable — themes are a progressive enhancement, never a hard dependency.
+function readExtraThemes() {
+  try {
+    const p = path.join(__dirname, 'themes.css');
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+  } catch {
+    return '';
+  }
+}
+
+// Distinct data-theme names in source order, so the JS cycle list matches the
+// blocks actually present in the page's CSS. Comments are stripped first so an
+// example selector inside a /* ... */ note can't leak a phantom theme.
+function themeNames(css) {
+  const stripped = String(css).replace(/\/\*[\s\S]*?\*\//g, '');
+  const out = [];
+  const re = /\[data-theme="([^"]+)"\]/g;
+  let m;
+  while ((m = re.exec(stripped))) if (!out.includes(m[1])) out.push(m[1]);
+  return out.length ? out : ['dark'];
+}
+
 function build() {
+  const extraThemes = readExtraThemes();
+  const styleCss = CSS + (extraThemes ? '\n/* themes.css (appended) */\n' + extraThemes + '\n' : '');
+  const themes = themeNames(styleCss);
+  const clientJs = CLIENT_JS.replace('/*__THEMES__*/["dark"]', () => JSON.stringify(themes));
   return [
     '<!DOCTYPE html>',
     '<html lang="en">',
@@ -1128,7 +1136,7 @@ function build() {
     '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
     '<title>Claude Code Session</title>',
     '<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤖</text></svg>">',
-    '<style>', CSS, '</style>',
+    '<style>', styleCss, '</style>',
     '</head>',
     '<body>',
     '<div id="app">',
@@ -1151,7 +1159,7 @@ function build() {
     '<section id="content">', SCAFFOLD, '</section>',
     '</div>',
     '<script id="session-data" type="application/json">/*__DATA__*/</script>',
-    '<script>', CLIENT_JS, '</script>',
+    '<script>', clientJs, '</script>',
     '</body></html>',
   ].join('\n');
 }

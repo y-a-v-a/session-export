@@ -14,11 +14,15 @@ Produces a one-page, fully offline HTML view of a Claude Code session — user t
 
 ## How to run
 
-From inside a Claude Code project:
+`export.js` sits next to this `SKILL.md` — use that directory's path (it may be
+project-local or under `~/.claude/`, so don't hardcode a project-relative path):
 
 ```
-node .claude/skills/claude-export/export.js [session-id-or-path] [--no-redact]
+node <this-skill-dir>/export.js [session-id-or-path] [--no-redact]
 ```
+
+Run it from the project root you want to export — auto-detection reads
+`~/.claude/projects/<encoded-cwd>/`.
 
 - **No argument**: auto-detects the most recently modified main session jsonl under `~/.claude/projects/<encoded-cwd>/` (skips `agent-*.jsonl` siblings and empty stubs).
 - **Session uuid**: looks up `<uuid>.jsonl` in the current project's directory.

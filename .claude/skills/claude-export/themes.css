@@ -1,0 +1,38 @@
+/* Extra themes for claude-export.
+ *
+ * Each `:root[data-theme="<name>"]` block below is appended to the exported
+ * HTML's <style> and added to the theme-toggle cycle (after the built-in
+ * `dark` and `light`). Override any of the variables defined in the default
+ * `:root` block; anything you omit inherits from `dark`.
+ *
+ * Add your own block by copying one of these and renaming the data-theme value.
+ */
+
+:root[data-theme="cool"] {
+  --bg:        #18181e;
+  --panel:     #1e1e24;
+  --panel2:    #232329;
+  --text:      #e5e5e7;
+  --muted:     #9aa0a6;
+  --dim:       #6e6e72;
+  --border:    #2f2f37;
+  --accent:    #8abeb7;
+  --accent2:   #d4a27f;
+  --good:      #b5bd68;
+  --bad:       #cc6666;
+  --warn:      #f0c674;
+  --thinking:  #b294bb;
+  --userBg:    #22252e;
+  --userAccent:#3a4255;
+  --toolBg:    #23232c;
+  --toolErrBg: #2e2024;
+  --toolOkBg:  #1f2823;
+  --thinkBg:   #1f1c25;
+  --subBg:     #25221b;
+  --codeBg:    #14141a;
+  --diffAdd:   #1f3a1f;
+  --diffDel:   #3a1f1f;
+  --link:      #81a2be;
+  --kbd-bg:    #2a2a32;
+  --shadow:    0 1px 0 rgba(0,0,0,.4);
+}
