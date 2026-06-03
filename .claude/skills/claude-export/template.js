@@ -356,6 +356,59 @@ body * { font-size: inherit; font-family: inherit; }
 /* TodoWrite items carry their own status glyph; drop the <ul> bullet. */
 .tool[data-tool="TodoWrite"] ul { list-style: none; padding-left: 0; }
 
+/* AskUserQuestion */
+.askq {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 0.25em;
+  overflow: hidden;
+}
+.askq-head {
+  padding: var(--base-padding);
+  display: flex; align-items: center; gap: 0.5em;
+  font-family: ui-monospace, monospace;
+  color: var(--accent);
+  cursor: pointer; user-select: none;
+}
+.askq-head::after {
+  content: "▸";
+  margin-left: auto;
+  color: var(--muted);
+  opacity: 0.7;
+  transition: transform 0.1s;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.askq.open .askq-head { border-bottom: 1px solid var(--border); }
+.askq.open .askq-head::after { transform: rotate(90deg); }
+.askq-title {
+  font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.05em; font-size: 0.8125em;
+}
+.askq-body { display: none; padding: var(--base-padding); flex-direction: column; gap: 1.25em; }
+.askq.open .askq-body { display: flex; }
+.askq-qhead { display: flex; align-items: baseline; gap: 0.5em; flex-wrap: wrap; margin-bottom: 0.5em; }
+.askq-chip {
+  font-size: 0.7em; text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 0.15em 0.5em; border-radius: 0.625em;
+  background: var(--accent); color: var(--bg); font-weight: 600; flex-shrink: 0;
+}
+.askq-qtext { font-weight: 600; color: var(--text); }
+.askq-multi { font-size: 0.75em; color: var(--dim); }
+.askq-options { display: flex; flex-direction: column; gap: 0.375em; }
+.askq-opt {
+  display: flex; gap: 0.5em; align-items: flex-start;
+  padding: 0.5em 0.625em;
+  border: 1px solid var(--border); border-radius: 0.25em;
+  background: var(--bg);
+}
+.askq-opt-mark { flex-shrink: 0; color: var(--dim); line-height: 1.4; }
+.askq-opt.chosen { border-color: var(--good); background: var(--toolOkBg); }
+.askq-opt.chosen .askq-opt-mark { color: var(--good); }
+.askq-opt-label { font-weight: 600; color: var(--text); }
+.askq-opt-desc { color: var(--muted); font-size: 0.9em; margin-top: 0.15em; }
+.askq-custom .askq-opt-desc { font-style: italic; }
+
 /* Diff */
 .diff { border: 1px solid var(--border); border-radius: 0.25em; overflow: hidden; }
 .diff-line { padding: 0 0.5em; font-family: ui-monospace, monospace; white-space: pre-wrap; }
@@ -655,6 +708,11 @@ function renderToolCall(block) {
     return renderSubagent(DATA.subagents[subRef.agentId], block);
   }
 
+  // AskUserQuestion? Render questions + options as a card, marking the picks.
+  if (name === "AskUserQuestion") {
+    return renderAskQuestion(block, result);
+  }
+
   // Header label
   let arg = "";
   let preview = "";
@@ -729,6 +787,68 @@ function renderSubagent(sub, parentBlock) {
   card.appendChild(head);
   const body = el("div", { class: "subagent-body" });
   renderRun(sub.entries || [], body);
+  card.appendChild(body);
+  return card;
+}
+
+// ---------- AskUserQuestion renderer ----------
+// The tool_result is a string: Your questions have been answered:
+// "<question>"="<answer>", "<q2>"="<a2>". … — answers are in question order
+// and each equals an option label (or a custom "Other" answer).
+function askAnswers(text) {
+  const out = [];
+  if (typeof text !== "string") return out;
+  const re = /"[^"]*"="([^"]*)"/g;
+  let m;
+  while ((m = re.exec(text))) out.push(m[1]);
+  return out;
+}
+function renderAskQuestion(block, result) {
+  const questions = (block.input && Array.isArray(block.input.questions)) ? block.input.questions : [];
+  const answers = askAnswers(result ? toolResultText(result.content) : "");
+  const card = el("div", { class: "askq open", data: { kind: "askq" } });
+  card.appendChild(el("div", { class: "askq-head", onclick: () => card.classList.toggle("open") }, [
+    el("span", { class: "askq-icon", text: "❓" }),
+    el("span", { class: "askq-title", text: "User question" }),
+  ]));
+  const body = el("div", { class: "askq-body" });
+  questions.forEach((q, qi) => {
+    const ans = answers[qi];
+    const picks = ans == null ? [] : ans.split(/,\s*/).map(s => s.trim());
+    const qwrap = el("div", { class: "askq-q" });
+    const qhead = el("div", { class: "askq-qhead" });
+    if (q.header) qhead.appendChild(el("span", { class: "askq-chip", text: q.header }));
+    qhead.appendChild(el("span", { class: "askq-qtext", text: q.question || "" }));
+    if (q.multiSelect) qhead.appendChild(el("span", { class: "askq-multi", text: "(multi-select)" }));
+    qwrap.appendChild(qhead);
+
+    const opts = el("div", { class: "askq-options" });
+    let anyMatched = false;
+    for (const o of (q.options || [])) {
+      const label = o.label || "";
+      const chosen = ans != null && (ans === label || picks.includes(label) || (q.multiSelect && ans.indexOf(label) !== -1));
+      if (chosen) anyMatched = true;
+      const opt = el("div", { class: "askq-opt" + (chosen ? " chosen" : "") });
+      opt.appendChild(el("span", { class: "askq-opt-mark", text: chosen ? "✓" : (q.multiSelect ? "☐" : "○") }));
+      const txt = el("div");
+      txt.appendChild(el("div", { class: "askq-opt-label", text: label }));
+      if (o.description) txt.appendChild(el("div", { class: "askq-opt-desc", text: o.description }));
+      opt.appendChild(txt);
+      opts.appendChild(opt);
+    }
+    // Custom "Other" answer that matched no listed option.
+    if (ans != null && ans !== "" && !anyMatched) {
+      const opt = el("div", { class: "askq-opt chosen askq-custom" });
+      opt.appendChild(el("span", { class: "askq-opt-mark", text: "✓" }));
+      const txt = el("div");
+      txt.appendChild(el("div", { class: "askq-opt-label", text: ans }));
+      txt.appendChild(el("div", { class: "askq-opt-desc", text: "custom answer" }));
+      opt.appendChild(txt);
+      opts.appendChild(opt);
+    }
+    qwrap.appendChild(opts);
+    body.appendChild(qwrap);
+  });
   card.appendChild(body);
   return card;
 }
@@ -900,7 +1020,10 @@ function buildTree() {
             const sa = DATA.subagents[sub.agentId];
             childRows.push({ kind: "sub", text: "↳ " + ((sa && sa.agentType) || "agent") + ": " + relPath((sa && sa.description) || ""), uuid: e.uuid, filter: "subagent" });
           } else {
-            const arg = (b.input && (b.input.command || b.input.file_path || b.input.pattern || b.input.url || b.input.description || "")) || "";
+            let arg = (b.input && (b.input.command || b.input.file_path || b.input.pattern || b.input.url || b.input.description || "")) || "";
+            if (b.name === "AskUserQuestion" && b.input && Array.isArray(b.input.questions) && b.input.questions[0]) {
+              arg = b.input.questions[0].header || b.input.questions[0].question || "";
+            }
             childRows.push({ kind: "tool", text: "↳ " + b.name + " " + relPath(String(arg)).slice(0, 80), uuid: e.uuid, filter: "tool" });
           }
         }
@@ -1050,7 +1173,7 @@ function setupSidebar() {
 
 // ---------- expand / collapse / keyboard ----------
 function expandAll(yes) {
-  for (const c of document.querySelectorAll(".thinking, .tool, .subagent")) {
+  for (const c of document.querySelectorAll(".thinking, .tool, .subagent, .askq")) {
     c.classList.toggle("open", yes);
   }
 }
@@ -1074,7 +1197,7 @@ function setupKeys() {
       if (search) { e.preventDefault(); search.focus(); }
     }
     else if (e.key === "t") toggleAll(".thinking");
-    else if (e.key === "o") toggleAll(".tool, .subagent");
+    else if (e.key === "o") toggleAll(".tool, .subagent, .askq");
     else if (e.key === "a") expandAll(true);
     else if (e.key === "z") expandAll(false);
     else if (e.key === "b") toggleSidebar();
