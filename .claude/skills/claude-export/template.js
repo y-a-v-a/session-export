@@ -787,6 +787,23 @@ function renderToolCall(block) {
       // No sample in-hand; show any status filter and let the result render.
       arg = input.status ? "status: " + input.status : "";
       break;
+    case "ExitPlanMode": {
+      const firstLine = String(input.plan || "").split("\\n").map(s => s.trim()).find(Boolean) || "plan";
+      arg = firstLine.replace(/^#+\\s*/, "");
+      if (input.plan) bodyChildren.push(el("div", { class: "md", html: md(String(input.plan)) }));
+      break;
+    }
+    case "Task":
+      // Reached only for unlinked Tasks; linked ones render as subagent cards above.
+      arg = (input.subagent_type ? input.subagent_type + ": " : "") + (input.description || "");
+      if (input.prompt) {
+        bodyChildren.push(el("div", { class: "tool-result-label", text: "PROMPT" }));
+        bodyChildren.push(el("pre", { text: String(input.prompt) }));
+      }
+      break;
+    case "TaskOutput":
+      arg = (input.task_id != null ? "#" + input.task_id : "") + (input.block ? "  (awaited)" : "");
+      break;
     default:
       arg = (input.description || input.command || input.file_path || "");
       preview = JSON.stringify(input).slice(0, 200);
@@ -1067,6 +1084,12 @@ function buildTree() {
               arg = "#" + b.input.taskId + " " + (b.input.status || "");
             } else if (b.name === "TaskList" && b.input && b.input.status) {
               arg = "status: " + b.input.status;
+            } else if (b.name === "ExitPlanMode" && b.input && b.input.plan) {
+              arg = (String(b.input.plan).split("\\n").map(s => s.trim()).find(Boolean) || "plan").replace(/^#+\\s*/, "");
+            } else if (b.name === "Task" && b.input) {
+              arg = (b.input.subagent_type ? b.input.subagent_type + ": " : "") + (b.input.description || "");
+            } else if (b.name === "TaskOutput" && b.input && b.input.task_id != null) {
+              arg = "#" + b.input.task_id;
             }
             childRows.push({ kind: "tool", text: "↳ " + b.name + " " + relPath(String(arg)).slice(0, 80), uuid: e.uuid, filter: "tool" });
           }
