@@ -687,6 +687,7 @@ function toolResultText(content) {
       if (typeof c === "string") return c;
       if (c.type === "text") return c.text || "";
       if (c.type === "image") return "[image]";
+      if (c.type === "tool_reference") return c.tool_name || "";
       return JSON.stringify(c);
     }).join("\\n");
   }
@@ -759,6 +760,32 @@ function renderToolCall(block) {
         bodyChildren.push(el("div", { class: "tool-result-label", text: "ARGS" }));
         bodyChildren.push(el("pre", { text: String(input.args) }));
       }
+      break;
+    case "ToolSearch":
+      arg = input.query || "";
+      bodyChildren.push(el("div", { class: "tool-result-label", text: "QUERY" }));
+      bodyChildren.push(el("pre", { text: (input.query || "") + (input.max_results != null ? "\\nmax_results: " + input.max_results : "") }));
+      break;
+    case "TaskCreate":
+      arg = input.subject || input.activeForm || "";
+      if (input.description) {
+        bodyChildren.push(el("div", { class: "tool-result-label", text: "DESCRIPTION" }));
+        bodyChildren.push(el("pre", { text: String(input.description) }));
+      }
+      break;
+    case "TaskUpdate": {
+      const g = input.status === "completed" ? "✓" : input.status === "in_progress" ? "▸" : input.status === "cancelled" ? "✗" : "•";
+      arg = (input.taskId != null ? "#" + input.taskId + "  " : "") + g + " " + (input.status || "");
+      if (input.subject) bodyChildren.push(el("pre", { text: "subject: " + input.subject }));
+      if (input.description) {
+        bodyChildren.push(el("div", { class: "tool-result-label", text: "DESCRIPTION" }));
+        bodyChildren.push(el("pre", { text: String(input.description) }));
+      }
+      break;
+    }
+    case "TaskList":
+      // No sample in-hand; show any status filter and let the result render.
+      arg = input.status ? "status: " + input.status : "";
       break;
     default:
       arg = (input.description || input.command || input.file_path || "");
@@ -1032,6 +1059,14 @@ function buildTree() {
               arg = b.input.questions[0].header || b.input.questions[0].question || "";
             } else if (b.name === "Skill" && b.input && b.input.skill) {
               arg = b.input.skill + (b.input.args ? ": " + b.input.args : "");
+            } else if (b.name === "ToolSearch" && b.input && b.input.query) {
+              arg = b.input.query;
+            } else if (b.name === "TaskCreate" && b.input && b.input.subject) {
+              arg = b.input.subject;
+            } else if (b.name === "TaskUpdate" && b.input && b.input.taskId != null) {
+              arg = "#" + b.input.taskId + " " + (b.input.status || "");
+            } else if (b.name === "TaskList" && b.input && b.input.status) {
+              arg = "status: " + b.input.status;
             }
             childRows.push({ kind: "tool", text: "↳ " + b.name + " " + relPath(String(arg)).slice(0, 80), uuid: e.uuid, filter: "tool" });
           }
