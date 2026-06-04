@@ -753,6 +753,13 @@ function renderToolCall(block) {
       bodyChildren.push(ul);
       break;
     }
+    case "Skill":
+      arg = input.skill || "";
+      if (input.args) {
+        bodyChildren.push(el("div", { class: "tool-result-label", text: "ARGS" }));
+        bodyChildren.push(el("pre", { text: String(input.args) }));
+      }
+      break;
     default:
       arg = (input.description || input.command || input.file_path || "");
       preview = JSON.stringify(input).slice(0, 200);
@@ -1023,6 +1030,8 @@ function buildTree() {
             let arg = (b.input && (b.input.command || b.input.file_path || b.input.pattern || b.input.url || b.input.description || "")) || "";
             if (b.name === "AskUserQuestion" && b.input && Array.isArray(b.input.questions) && b.input.questions[0]) {
               arg = b.input.questions[0].header || b.input.questions[0].question || "";
+            } else if (b.name === "Skill" && b.input && b.input.skill) {
+              arg = b.input.skill + (b.input.args ? ": " + b.input.args : "");
             }
             childRows.push({ kind: "tool", text: "↳ " + b.name + " " + relPath(String(arg)).slice(0, 80), uuid: e.uuid, filter: "tool" });
           }
