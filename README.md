@@ -5,6 +5,11 @@ A Claude Code skill that converts a session's `.jsonl` transcript (under
 file — user/assistant turns, thinking blocks, every tool call with its
 result, and any subagent transcripts rendered inline.
 
+> **Claude Code CLI only.** It reads the local `.jsonl` session transcripts
+> that the Claude Code command-line tool writes to `~/.claude/projects/`. The
+> desktop, web, and IDE-extension clients don't produce these files, so the
+> skill doesn't apply there.
+
 ![Exported session, dark skin](./session-export.png)
 
 ![Exported session, light skin](./session-export-2.png)
