@@ -233,6 +233,16 @@ body * { font-size: inherit; font-family: inherit; }
   margin: 0 auto;
   width: 100%;
 }
+.app-foot {
+  margin-top: auto;
+  padding: 0.875em 1.25em;
+  border-top: 1px solid var(--border);
+  color: var(--dim);
+  font-size: 0.8em;
+  text-align: center;
+}
+.app-foot a { color: var(--link); }
+.app-foot a:hover { text-decoration: underline; }
 
 /* Entries */
 .entry {
@@ -550,6 +560,10 @@ const SCAFFOLD = `
   </div>
 </header>
 <main id="messages"></main>
+<footer class="app-foot">
+  exported with <a href="https://github.com/y-a-v-a/session-export" target="_blank" rel="noopener">session-export</a>
+  by <a href="https://www.vincentbruijn.nl" target="_blank" rel="noopener">Vincent Bruijn</a>
+</footer>
 `;
 
 const CLIENT_JS = `
