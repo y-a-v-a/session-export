@@ -39,6 +39,12 @@ const CSS = `
   --kbd-bg:    #2a2724;
   --shadow:    0 1px 0 rgba(0,0,0,.4);
   --base-padding: 1.25em;
+  /* Shell command "terminal" look — intentionally theme-independent. */
+  --shell-bg:     #0b0e0b;
+  --shell-fg:     #4cd47a;
+  --shell-border: #1c3b25;
+  --shell-prompt: #2f8f50;
+  --shell-glow:   rgba(76, 212, 122, 0.35);
 }
 :root[data-theme="light"] {
   --bg:        #FAF9F5;
@@ -208,7 +214,7 @@ body * { font-size: inherit; font-family: inherit; }
   background: var(--panel);
   display: flex; gap: 1em; align-items: center; flex-wrap: wrap;
 }
-.head-meta { display: flex; gap: 1em; color: var(--muted); flex-wrap: wrap; }
+.head-meta { display: flex; flex-direction: column; gap: 0.25em; color: var(--muted); }
 .head-meta b { color: var(--text); font-weight: 600; margin-right: 0.25em; }
 .head-actions { margin-left: auto; display: flex; gap: 0.5em; }
 .head-actions button {
@@ -355,6 +361,24 @@ body * { font-size: inherit; font-family: inherit; }
 }
 /* TodoWrite items carry their own status glyph; drop the <ul> bullet. */
 .tool[data-tool="TodoWrite"] ul { list-style: none; padding-left: 0; }
+
+/* Bash command dressed up as a shell: green-on-black with a $ prompt.
+   The prompt is a ::before glyph so it never lands in the copied text.
+   Scoped under .tool-body pre so it outranks that rule (same base
+   specificity + an extra class) instead of fighting it. */
+.tool-body pre.shell-command {
+  background: var(--shell-bg);
+  color: var(--shell-fg);
+  border: 1px solid var(--shell-border);
+  padding: var(--base-padding);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-shadow: 0 0 2px var(--shell-glow);
+}
+.tool-body pre.shell-command::before {
+  content: "$ ";
+  color: var(--shell-prompt);
+  user-select: none;
+}
 
 /* Copy-to-clipboard — button revealed on hover over its host wrapper */
 .copy-host { position: relative; }
@@ -747,7 +771,7 @@ function renderToolCall(block) {
   switch (name) {
     case "Bash":
       arg = "$ " + (input.command || "");
-      bodyChildren.push(el("pre", { text: input.command || "" }));
+      bodyChildren.push(el("pre", { class: "shell-command", text: input.command || "" }));
       break;
     case "Read":
       arg = input.file_path || "";
@@ -1048,16 +1072,16 @@ function renderHead() {
   const hm = document.getElementById("head-meta");
   if (hm) {
     hm.innerHTML =
+      '<span><b>session:</b><span class="mono" style="font-size:0.875em">' + escapeHtml(H.sessionId || "") + '</span></span>' +
       '<span><b>cwd:</b>' + escapeHtml(H.cwd || "") + '</span>' +
-      (H.gitBranch ? '<span><b>branch:</b>' + escapeHtml(H.gitBranch) + '</span>' : '') +
+      (H.model ? '<span><b>model:</b>' + escapeHtml(H.model) + '</span>' : '') +
       '<span><b>msgs:</b>' + messageCount + '</span>' +
       '<span><b>tokens:</b>' + fmtTokens(T.input + T.output) +
         ' (' + fmtTokens(T.input) + ' in / ' + fmtTokens(T.output) + ' out, cache ' +
         fmtTokens(T.cacheRead) + 'r/' + fmtTokens(T.cacheWrite) + 'w)</span>' +
       '<span><b>cost~</b>' + fmtCost(T.estCostUSD || 0) + '</span>' +
-      (H.model ? '<span><b>model:</b>' + escapeHtml(H.model) + '</span>' : '') +
-      (rTotal ? '<span title="' + escapeHtml(rDetail) + '" style="color:var(--warn)"><b>redacted:</b>' + rTotal + '</span>' : '') +
-      '<span><b>session:</b><span class="mono" style="font-size:0.875em">' + escapeHtml(H.sessionId || "") + '</span></span>';
+      (H.gitBranch ? '<span><b>branch:</b>' + escapeHtml(H.gitBranch) + '</span>' : '') +
+      (rTotal ? '<span title="' + escapeHtml(rDetail) + '" style="color:var(--warn)"><b>redacted:</b>' + rTotal + '</span>' : '');
   }
   const h1 = document.querySelector(".sidebar-head h1");
   if (h1) h1.textContent = "Claude Code session";
@@ -1310,7 +1334,7 @@ function setupCopy() {
   for (const md of document.querySelectorAll(".bubble.user .md")) {
     attachCopy(md, () => md.innerText);
   }
-  for (const pre of document.querySelectorAll('[data-tool="Bash"] .tool-body pre:first-child')) {
+  for (const pre of document.querySelectorAll(".shell-command")) {
     attachCopy(pre, () => pre.textContent);
   }
 }
