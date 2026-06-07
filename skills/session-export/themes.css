@@ -1,4 +1,4 @@
-/* Extra themes for claude-export.
+/* Extra themes for session-export.
  *
  * Each `:root[data-theme="<name>"]` block below is appended to the exported
  * HTML's <style> and added to the theme-toggle cycle (after the built-in

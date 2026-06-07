@@ -1,0 +1,16 @@
+{
+  "name": "session-export",
+  "version": "1.0.0",
+  "description": "Export a Claude Code session to a single self-contained HTML file, including subagent transcripts.",
+  "author": {
+    "name": "Vincent Bruijn",
+    "email": "vebruijn@gmail.com",
+    "url": "https://github.com/y-a-v-a"
+  },
+  "homepage": "https://github.com/y-a-v-a/claude-export",
+  "repository": "https://github.com/y-a-v-a/claude-export",
+  "keywords": ["export", "conversation"],
+  "skills": [
+    "./skills/session-export"
+  ]
+}

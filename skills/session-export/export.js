@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// claude-export: convert a Claude Code session jsonl into a one-page HTML.
+// session-export: convert a Claude Code session jsonl into a one-page HTML.
 // Usage:  node export.js [session-id | path/to/session.jsonl]
 //   With no argument, picks the newest main session jsonl under
-//   ~/.claude/projects/<encoded-cwd>/ for the current cwd.
+//   <configDir>/projects/<encoded-cwd>/ for the current cwd, where configDir
+//   is $CLAUDE_CONFIG_DIR if set, else ~/.claude.
 
 const fs = require('fs');
 const path = require('path');
@@ -38,8 +39,19 @@ function encodeCwd(cwd) {
   return cwd.replace(/\//g, '-');
 }
 
+// Claude Code's config dir defaults to ~/.claude but can be relocated with
+// the CLAUDE_CONFIG_DIR env var; sessions live under <configDir>/projects/.
+function claudeConfigDir() {
+  const env = process.env.CLAUDE_CONFIG_DIR;
+  return env && env.trim() ? env : path.join(os.homedir(), '.claude');
+}
+
+function projectsRoot() {
+  return path.join(claudeConfigDir(), 'projects');
+}
+
 function projectDirFor(cwd) {
-  return path.join(os.homedir(), '.claude', 'projects', encodeCwd(cwd));
+  return path.join(projectsRoot(), encodeCwd(cwd));
 }
 
 function findSessionFile(arg) {
@@ -56,7 +68,7 @@ function findSessionFile(arg) {
     // Treat arg as a session uuid: look in current project, then any project.
     const candidate = path.join(projectDirFor(process.cwd()), arg + '.jsonl');
     if (safeStat(candidate)) return candidate;
-    const root = path.join(os.homedir(), '.claude', 'projects');
+    const root = projectsRoot();
     for (const proj of safeReaddir(root)) {
       const p = path.join(root, proj, arg + '.jsonl');
       if (safeStat(p)) return p;
@@ -484,7 +496,7 @@ const TEMPLATE = require('./template.js')();
       process.stderr.write(`redacted ${total} potential secret${total === 1 ? '' : 's'} (${breakdown})\n`);
     }
   } catch (err) {
-    process.stderr.write(`claude-export: ${err.message}\n`);
+    process.stderr.write(`session-export: ${err.message}\n`);
     process.exit(1);
   }
 })();

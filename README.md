@@ -1,16 +1,16 @@
-# claude-export
+# session-export
 
 A Claude Code skill that converts a session's `.jsonl` transcript (under
 `~/.claude/projects/<encoded-cwd>/`) into a single self-contained HTML
 file — user/assistant turns, thinking blocks, every tool call with its
 result, and any subagent transcripts rendered inline.
 
-![Exported session, dark skin](./claude-export.png)
+![Exported session, dark skin](./session-export.png)
 
-![Exported session, light skin](./claude-export-2.png)
+![Exported session, light skin](./session-export-2.png)
 
-The skill lives in `.claude/skills/claude-export/` so it can be dropped
-into any Claude Code project.
+The skill lives in `skills/session-export/` so it can be dropped into any
+Claude Code project.
 
 ## Install
 
@@ -18,17 +18,17 @@ Copy it into a project, or symlink it user-globally so every project
 picks it up:
 
 ```sh
-cp -R .claude/skills/claude-export /path/to/other-project/.claude/skills/
+cp -R skills/session-export /path/to/other-project/.claude/skills/
 # or
-ln -s "$PWD/.claude/skills/claude-export" ~/.claude/skills/claude-export
+ln -s "$PWD/skills/session-export" ~/.claude/skills/session-export
 ```
 
 ## Use
 
-In Claude Code, run `/claude-export`, or call it directly:
+In Claude Code, run `/session-export`, or call it directly:
 
 ```sh
-node .claude/skills/claude-export/export.js [session-id-or-path] [--no-redact]
+node skills/session-export/export.js [session-id-or-path] [--no-redact]
 ```
 
 - **no argument** — most recently modified main session for the current `cwd`
@@ -80,7 +80,7 @@ inline `progress` records linked by `parentToolUseID` (deduped by inner
 ## Files
 
 ```
-.claude/skills/claude-export/
+skills/session-export/
   SKILL.md       — slash-command manifest
   export.js      — session resolver, jsonl parser, payload builder
   template.js    — inline CSS + scaffold + client renderer

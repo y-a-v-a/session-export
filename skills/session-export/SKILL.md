@@ -1,9 +1,9 @@
 ---
-name: claude-export
+name: session-export
 description: Export the current (or a specified) Claude Code session to a single self-contained HTML file, including any subagent transcripts. Use when the user asks to "export this session", "save the chat as HTML", "share this conversation", or wants an offline-readable record of a Claude Code session.
 ---
 
-# claude-export
+# session-export
 
 Produces a one-page, fully offline HTML view of a Claude Code session — user turns, assistant turns, thinking blocks, tool calls and results, and any subagent (Task/Agent) transcripts rendered inline.
 
@@ -22,9 +22,10 @@ node <this-skill-dir>/export.js [session-id-or-path] [--no-redact]
 ```
 
 Run it from the project root you want to export — auto-detection reads
-`~/.claude/projects/<encoded-cwd>/`.
+`<configDir>/projects/<encoded-cwd>/`, where configDir is `$CLAUDE_CONFIG_DIR`
+if set, else `~/.claude`.
 
-- **No argument**: auto-detects the most recently modified main session jsonl under `~/.claude/projects/<encoded-cwd>/` (skips `agent-*.jsonl` siblings and empty stubs).
+- **No argument**: auto-detects the most recently modified main session jsonl under that project dir (skips `agent-*.jsonl` siblings and empty stubs).
 - **Session uuid**: looks up `<uuid>.jsonl` in the current project's directory.
 - **Path**: uses it directly.
 - **`--no-redact`**: disable the secret-redaction pass (see below).
@@ -52,6 +53,6 @@ Single HTML file with:
 - Sidebar tree of turns with live search and filter chips.
 - Collapsible thinking blocks, collapsible tool outputs.
 - Subagent (Task/Agent) cards that expand to show the nested subagent transcript (loaded from sibling `agent-<id>.jsonl` files when present, falls back to inline `progress` records).
-- Keyboard shortcuts: `/` focus search, `t` toggle thinking, `o` toggle tool outputs, `Esc` clear search, `[`/`]` navigate entries.
+- Keyboard shortcuts: `/` focus search, `t` toggle thinking, `o` toggle tool outputs, `b` toggle sidebar, `a`/`z` expand/collapse all, `Esc` clear search, `[`/`]` navigate entries.
 
 No network access required to view.

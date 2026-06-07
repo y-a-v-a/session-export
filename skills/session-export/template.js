@@ -1,4 +1,4 @@
-// HTML template assembly for claude-export.
+// HTML template assembly for session-export.
 // Exports a function returning the full single-page HTML, with a
 // `/*__DATA__*/` placeholder where export.js injects the JSON payload.
 //
@@ -558,7 +558,7 @@ const CLIENT_JS = `
 function bail(msg) {
   document.body.innerHTML =
     '<pre style="color:#cc6666;padding:1em;font-family:Menlo,monospace;white-space:pre-wrap">' +
-    'claude-export: ' + String(msg).replace(/[<&]/g, c => c === "<" ? "&lt;" : "&amp;") +
+    'session-export: ' + String(msg).replace(/[<&]/g, c => c === "<" ? "&lt;" : "&amp;") +
     '</pre>';
 }
 const dataEl = document.getElementById("session-data");
@@ -1198,7 +1198,7 @@ function setupFilters() {
 // Theme names are injected by build() from the built-in CSS plus any themes.css.
 const THEMES = /*__THEMES__*/["dark"];
 function setupTheme() {
-  const stored = lsGet("claude-export-theme");
+  const stored = lsGet("session-export-theme");
   let initial = "dark";
   if (stored && THEMES.includes(stored)) initial = stored;
   else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) initial = "light";
@@ -1211,7 +1211,7 @@ function setupTheme() {
     const cur = document.documentElement.dataset.theme || "dark";
     const next = THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length] || "dark";
     document.documentElement.dataset.theme = next;
-    lsSet("claude-export-theme", next);
+    lsSet("session-export-theme", next);
     label();
   });
 }
@@ -1227,17 +1227,17 @@ function toggleSidebar() {
     app.classList.toggle("show-sidebar");
   } else {
     app.classList.toggle("sidebar-collapsed");
-    lsSet("claude-export-sidebar-collapsed", app.classList.contains("sidebar-collapsed") ? "1" : "0");
+    lsSet("session-export-sidebar-collapsed", app.classList.contains("sidebar-collapsed") ? "1" : "0");
   }
 }
 function setupSidebar() {
   const app = document.getElementById("app");
   if (!app) return;
   if (!isSmallViewport()) {
-    if (lsGet("claude-export-sidebar-collapsed") === "1") {
+    if (lsGet("session-export-sidebar-collapsed") === "1") {
       app.classList.add("sidebar-collapsed");
     }
-    const w = lsGet("claude-export-sidebar-width");
+    const w = lsGet("session-export-sidebar-width");
     if (w) document.documentElement.style.setProperty("--sidebar-width", w);
   }
   const btn = document.getElementById("btn-toggle-sidebar");
@@ -1268,7 +1268,7 @@ function setupSidebar() {
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
       const v = document.documentElement.style.getPropertyValue("--sidebar-width");
-      if (v) lsSet("claude-export-sidebar-width", v.trim());
+      if (v) lsSet("session-export-sidebar-width", v.trim());
     };
     handle.addEventListener("mousedown", start);
     document.addEventListener("mousemove", (e) => move(e.clientX));
@@ -1278,7 +1278,7 @@ function setupSidebar() {
     document.addEventListener("touchend", end);
     handle.addEventListener("dblclick", () => {
       document.documentElement.style.removeProperty("--sidebar-width");
-      lsSet("claude-export-sidebar-width", "");
+      lsSet("session-export-sidebar-width", "");
     });
   }
 
