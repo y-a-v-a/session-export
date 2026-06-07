@@ -356,6 +356,33 @@ body * { font-size: inherit; font-family: inherit; }
 /* TodoWrite items carry their own status glyph; drop the <ul> bullet. */
 .tool[data-tool="TodoWrite"] ul { list-style: none; padding-left: 0; }
 
+/* Copy-to-clipboard — button revealed on hover over its host wrapper */
+.copy-host { position: relative; }
+.copy-btn {
+  position: absolute;
+  top: 0.4em;
+  right: 0.4em;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  font-size: 0.9em;
+  line-height: 1;
+  padding: 0.35em;
+  color: var(--muted);
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 0.25em;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s, color 0.1s, border-color 0.1s;
+}
+.copy-host:hover > .copy-btn,
+.copy-btn:focus-visible { opacity: 1; }
+.copy-btn:hover { color: var(--text); border-color: var(--accent); }
+.copy-btn.copied { color: var(--good); border-color: var(--good); opacity: 1; }
+
 /* AskUserQuestion */
 .askq {
   background: var(--panel2);
@@ -493,8 +520,7 @@ const SCAFFOLD = `
   <button class="sidebar-toggle" id="btn-toggle-sidebar" aria-label="Toggle sidebar" title="Toggle sidebar (b)">☰</button>
   <div class="head-meta" id="head-meta"></div>
   <div class="head-actions">
-    <button id="btn-expand-all" title="Expand all (a)">Expand all</button>
-    <button id="btn-collapse-all" title="Collapse all (z)">Collapse all</button>
+    <button id="btn-toggle-all" title="Expand all (a) / Collapse all (z)">Expand all</button>
     <button id="btn-theme" title="Toggle theme">Theme</button>
   </div>
 </header>
@@ -1238,11 +1264,64 @@ function setupSidebar() {
   });
 }
 
+// ---------- copy to clipboard ----------
+const ICON_SVG = (inner) => '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + inner + '</svg>';
+const ICON_COPY = ICON_SVG('<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>');
+const ICON_OK = ICON_SVG('<path d="M20 6 9 17l-5-5"/>');
+const ICON_FAIL = ICON_SVG('<path d="M18 6 6 18M6 6l12 12"/>');
+function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+  // file:// without the async Clipboard API — fall back to execCommand.
+  return new Promise((resolve, reject) => {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      ok ? resolve() : reject(new Error("execCommand failed"));
+    } catch (err) { reject(err); }
+  });
+}
+// Wrap target in a positioned host and overlay a hover-reveal copy button.
+function attachCopy(target, getText) {
+  if (!target || target.closest(".copy-host")) return;
+  const host = el("div", { class: "copy-host" });
+  target.parentNode.insertBefore(host, target);
+  host.appendChild(target);
+  const btn = el("button", { class: "copy-btn", type: "button", title: "Copy", "aria-label": "Copy to clipboard", html: ICON_COPY });
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const reset = (glyph, cls) => {
+      btn.innerHTML = glyph;
+      btn.classList.toggle("copied", cls);
+      setTimeout(() => { btn.innerHTML = ICON_COPY; btn.classList.remove("copied"); }, 1200);
+    };
+    copyText(getText()).then(() => reset(ICON_OK, true), () => reset(ICON_FAIL, false));
+  });
+  host.appendChild(btn);
+}
+function setupCopy() {
+  for (const md of document.querySelectorAll(".bubble.user .md")) {
+    attachCopy(md, () => md.innerText);
+  }
+  for (const pre of document.querySelectorAll('[data-tool="Bash"] .tool-body pre:first-child')) {
+    attachCopy(pre, () => pre.textContent);
+  }
+}
+
 // ---------- expand / collapse / keyboard ----------
 function expandAll(yes) {
   for (const c of document.querySelectorAll(".thinking, .tool, .subagent, .askq")) {
     c.classList.toggle("open", yes);
   }
+  const btn = document.getElementById("btn-toggle-all");
+  if (btn) btn.textContent = yes ? "Collapse all" : "Expand all";
 }
 function toggleAll(selector) {
   const list = document.querySelectorAll(selector);
@@ -1250,10 +1329,12 @@ function toggleAll(selector) {
   list.forEach(n => n.classList.toggle("open", anyClosed));
 }
 function setupKeys() {
-  const exp = document.getElementById("btn-expand-all");
-  if (exp) exp.addEventListener("click", () => expandAll(true));
-  const col = document.getElementById("btn-collapse-all");
-  if (col) col.addEventListener("click", () => expandAll(false));
+  const toggle = document.getElementById("btn-toggle-all");
+  if (toggle) toggle.addEventListener("click", () => {
+    const anyClosed = [...document.querySelectorAll(".thinking, .tool, .subagent, .askq")]
+      .some(n => !n.classList.contains("open"));
+    expandAll(anyClosed);
+  });
   document.addEventListener("keydown", (e) => {
     if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) {
       if (e.key === "Escape") { e.target.value = ""; buildTree(); e.target.blur(); }
@@ -1288,6 +1369,7 @@ buildTree();
 setupFilters();
 setupKeys();
 setupSidebar();
+setupCopy();
 `;
 
 // Read an optional themes.css sitting next to this module. Returns "" if absent
