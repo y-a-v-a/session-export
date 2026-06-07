@@ -1,0 +1,24 @@
+{
+  "name": "session-export",
+  "owner": {
+    "name": "Vincent Bruijn",
+    "url": "https://github.com/y-a-v-a"
+  },
+  "metadata": {
+    "description": "Marketplace hosting the session-export plugin."
+  },
+  "plugins": [
+    {
+      "name": "session-export",
+      "description": "Export a Claude Code session to a single self-contained HTML file, including subagent transcripts.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Vincent Bruijn",
+        "url": "https://github.com/y-a-v-a"
+      },
+      "source": "./",
+      "category": "productivity",
+      "homepage": "https://github.com/y-a-v-a/claude-export"
+    }
+  ]
+}

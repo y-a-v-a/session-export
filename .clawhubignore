@@ -1,0 +1,21 @@
+# .clawhubignore — files excluded when this plugin is packed and published to ClawHub.
+# ClawHub packs from the publish root; for a code plugin that's this repo root
+# (next to .claude-plugin/plugin.json). Same glob syntax as .gitignore (which
+# ClawHub also honors); one pattern per line. Legacy filename: .clawdhubignore
+#
+# Keep: .claude-plugin/, skills/, README.md, LICENSE, the screenshots.
+
+# Exported session artifacts — this skill's own (often large) output
+claude-session*.html
+pi-session*.html
+
+# ClawHub CLI install/lock metadata
+.clawhub/
+.clawdhub/
+
+# Version control & OS cruft
+.git/
+.DS_Store
+
+# Dependency dirs (none today; ignored defensively)
+node_modules/

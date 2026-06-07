@@ -88,3 +88,7 @@ skills/session-export/
 ```
 
 No runtime dependencies; Node 18+.
+
+## License
+
+Open source under the [MIT license](./LICENSE). No tracking. No analytics.

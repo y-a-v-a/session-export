@@ -9,7 +9,7 @@
   },
   "homepage": "https://github.com/y-a-v-a/claude-export",
   "repository": "https://github.com/y-a-v-a/claude-export",
-  "keywords": ["export", "conversation"],
+  "keywords": ["export", "conversation", "session"],
   "skills": [
     "./skills/session-export"
   ]
