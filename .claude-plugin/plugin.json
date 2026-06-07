@@ -7,8 +7,8 @@
     "email": "vebruijn@gmail.com",
     "url": "https://github.com/y-a-v-a"
   },
-  "homepage": "https://github.com/y-a-v-a/claude-export",
-  "repository": "https://github.com/y-a-v-a/claude-export",
+  "homepage": "https://github.com/y-a-v-a/session-export",
+  "repository": "https://github.com/y-a-v-a/session-export",
   "keywords": ["export", "conversation", "session"],
   "skills": [
     "./skills/session-export"
