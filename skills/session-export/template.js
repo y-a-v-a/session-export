@@ -131,6 +131,7 @@ body * { font-size: inherit; font-family: inherit; }
   border: 1px solid var(--border); border-radius: 0.25em;
   cursor: pointer;
   flex-shrink: 0;
+  align-self: flex-start;
   line-height: 1;
 }
 .sidebar-toggle:hover { border-color: var(--accent); }
@@ -216,7 +217,7 @@ body * { font-size: inherit; font-family: inherit; }
 }
 .head-meta { display: flex; flex-direction: column; gap: 0.25em; color: var(--muted); }
 .head-meta b { color: var(--text); font-weight: 600; margin-right: 0.25em; }
-.head-actions { margin-left: auto; display: flex; gap: 0.5em; }
+.head-actions { margin-left: auto; align-self: flex-end; display: flex; gap: 0.5em; }
 .head-actions button {
   font: inherit;
   padding: 0.3em 0.625em;
