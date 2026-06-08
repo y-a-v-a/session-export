@@ -785,6 +785,7 @@ function renderToolCall(block) {
   let arg = "";
   let preview = "";
   let bodyChildren = [];
+  let skipResult = false; // when a case renders the result itself
   switch (name) {
     case "Bash":
       arg = "$ " + (input.command || "");
@@ -892,6 +893,44 @@ function renderToolCall(block) {
       bodyChildren.push(ul);
       break;
     }
+    // ----- Codex multi-agent tools (namespace multi_agent_v1) -----
+    case "spawn_agent": {
+      let info = null; try { info = JSON.parse(toolResultText(result && result.content)); } catch {}
+      arg = "spawn agent" + (info && info.nickname ? " — " + info.nickname : "");
+      if (info && (info.nickname || info.agent_id)) {
+        bodyChildren.push(el("div", { class: "tool-result-label", text: "AGENT" }));
+        bodyChildren.push(el("pre", { text: ((info.nickname ? info.nickname + "  " : "") + (info.agent_id || "")).trim() }));
+      }
+      if (input.message) {
+        bodyChildren.push(el("div", { class: "tool-result-label", text: "TASK" }));
+        bodyChildren.push(el("div", { class: "md", html: md(String(input.message)) }));
+      }
+      skipResult = true;
+      break;
+    }
+    case "wait_agent": {
+      arg = "wait agent" + (Array.isArray(input.targets) && input.targets.length ? " — " + input.targets.join(", ") : "");
+      let out = null; try { out = JSON.parse(toolResultText(result && result.content)); } catch {}
+      const statusMap = out && out.status;
+      if (statusMap && typeof statusMap === "object") {
+        for (const [agentId, stateObj] of Object.entries(statusMap)) {
+          if (stateObj && typeof stateObj === "object") {
+            for (const [state, val] of Object.entries(stateObj)) {
+              bodyChildren.push(el("div", { class: "tool-result-label", text: String(state).toUpperCase() + " · " + agentId }));
+              bodyChildren.push(el("div", { class: "md", html: md(typeof val === "string" ? val : JSON.stringify(val, null, 2)) }));
+            }
+          } else {
+            bodyChildren.push(el("pre", { text: agentId + ": " + String(stateObj) }));
+          }
+        }
+        skipResult = true;
+      }
+      break;
+    }
+    case "close_agent":
+      arg = "close agent" + (input.target ? " — " + input.target : "");
+      skipResult = true;
+      break;
     default:
       arg = (input.description || input.command || input.file_path || "");
       preview = JSON.stringify(input).slice(0, 200);
@@ -907,7 +946,7 @@ function renderToolCall(block) {
   const body = el("div", { class: "tool-body" });
   for (const c of bodyChildren) body.appendChild(c);
 
-  if (result) {
+  if (result && !skipResult) {
     body.appendChild(el("div", { class: "tool-result-label", text: isErr ? "ERROR" : "RESULT" }));
     const txt = toolResultText(result.content);
     body.appendChild(el("pre", { text: txt.length > 8000 ? txt.slice(0, 8000) + "\\n…[truncated " + (txt.length - 8000) + " chars]" : txt }));

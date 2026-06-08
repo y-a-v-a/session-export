@@ -100,6 +100,25 @@ function isSyntheticUser(text) {
   return t.startsWith('<environment_context>') || t.startsWith('<user_instructions>');
 }
 
+// A <subagent_notification> arrives as a "user" message, but it is a spawned
+// agent reporting back — not the human. Pull out the agent's result so we can
+// render it as an assistant-side turn instead. Returns markdown, or null.
+function parseSubagentNotification(text) {
+  const t = (text || '').trim();
+  if (!t.startsWith('<subagent_notification>')) return null;
+  const body = t.replace(/^<subagent_notification>\s*/, '').replace(/<\/subagent_notification>\s*$/, '').trim();
+  const parts = [];
+  try {
+    const o = JSON.parse(body);
+    const st = o && o.status;
+    if (st && typeof st === 'object') {
+      for (const val of Object.values(st)) parts.push(typeof val === 'string' ? val : JSON.stringify(val, null, 2));
+    }
+  } catch { /* fall back to the raw inner text below */ }
+  const findings = parts.join('\n\n') || body;
+  return '**↳ Subagent result**\n\n' + findings;
+}
+
 function normalizeOutput(output) {
   if (typeof output === 'string') return output;
   if (output == null) return '';
@@ -180,7 +199,17 @@ function buildPayload(file) {
       const role = p.role === 'assistant' ? 'assistant' : 'user';
       const text = messageText(p.content);
       if (!text) continue;
-      if (role === 'user' && isSyntheticUser(text)) continue;
+      if (role === 'user') {
+        if (isSyntheticUser(text)) continue;
+        const sub = parseSubagentNotification(text);
+        if (sub) {
+          // Reclassify the subagent's report as an assistant-side turn.
+          entries.push({ type: 'assistant', uuid: 'cx-' + (idx++), timestamp: rec.timestamp,
+            message: { role: 'assistant', content: [{ type: 'text', text: sub }] } });
+          header.messageCount++;
+          continue;
+        }
+      }
       entries.push({ type: role, uuid: 'cx-' + (idx++), timestamp: rec.timestamp,
         message: { role, content: [{ type: 'text', text }] } });
       header.messageCount++;
