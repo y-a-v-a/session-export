@@ -196,9 +196,16 @@ function buildPayload(file) {
     flushReasoning();
 
     if (p.type === 'message') {
-      const role = p.role === 'assistant' ? 'assistant' : 'user';
       const text = messageText(p.content);
       if (!text) continue;
+      // developer/system messages are injected instructions (permissions,
+      // collaboration mode, apps, skills) — render as a foldable context card.
+      if (p.role !== 'assistant' && p.role !== 'user') {
+        entries.push({ type: 'user', uuid: 'cx-' + (idx++), timestamp: rec.timestamp,
+          message: { role: 'user', content: [{ type: 'context', summary: (p.role || 'system') + ' instructions', text }] } });
+        continue;
+      }
+      const role = p.role;
       if (role === 'user') {
         if (isSyntheticUser(text)) continue;
         const sub = parseSubagentNotification(text);

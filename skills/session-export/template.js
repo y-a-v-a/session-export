@@ -328,6 +328,21 @@ body * { font-size: inherit; font-family: inherit; }
 .thinking.open .thinking-body { display: block; }
 .thinking-body pre { white-space: pre-wrap; margin: 0; font-family: ui-monospace, monospace; }
 
+/* Injected context / instructions (foldable) */
+.context { margin: 0.5em var(--base-padding); }
+.context-head {
+  cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: 0.375em;
+  padding: 0.25em 0;
+  color: var(--dim); font-size: 0.8em;
+  font-family: ui-monospace, monospace;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.context-head::before { content: "▸"; opacity: 0.7; transition: transform 0.1s; display: inline-block; }
+.context.open .context-head::before { transform: rotate(90deg); }
+.context-body { display: none; padding: 0.25em 0 0.25em 0.75em; border-left: 2px solid var(--border); color: var(--muted); }
+.context.open .context-body { display: block; }
+
 /* Tools */
 .tool {
   background: var(--toolBg);
@@ -731,6 +746,14 @@ function renderText(text) {
   return el("div", { class: "md", html: md(text) });
 }
 
+// Foldable, collapsed-by-default disclosure for injected context/instructions.
+function renderContext(block) {
+  const card = el("div", { class: "context", data: { kind: "context" } });
+  card.appendChild(el("div", { class: "context-head", onclick: () => card.classList.toggle("open") }, block.summary || "context"));
+  card.appendChild(el("div", { class: "context-body" }, [el("div", { class: "md", html: md(String(block.text || "")) })]));
+  return card;
+}
+
 // ---------- tool result lookup ----------
 // Map tool_use_id -> tool_result content (string or array of blocks)
 const TOOL_RESULTS = new Map();
@@ -1036,6 +1059,15 @@ function renderEntry(e, opts) {
   if (!e) return null;
   const t = e.type;
   if (t !== "user" && t !== "assistant") return null;
+
+  // Injected developer/system context (Codex) — a bare foldable card, no role label.
+  const _content = e.message && e.message.content;
+  if (Array.isArray(_content) && _content.length && _content.every(b => b && b.type === "context")) {
+    const wrap = el("div", { class: "entry", data: { kind: "context", uuid: e.uuid || "" } });
+    for (const b of _content) wrap.appendChild(renderContext(b));
+    return wrap;
+  }
+
   const isUser = t === "user";
   const firstOfRun = !opts || opts.firstOfRun !== false;
   const wrap = el("div", {
@@ -1100,10 +1132,17 @@ function isVisible(e) {
   }
   return true;
 }
+// Injected-context cards render bare (no role header); they must stay
+// transparent to run-grouping so they don't suppress the next turn's header.
+function isContextEntry(e) {
+  const c = e && e.message && e.message.content;
+  return Array.isArray(c) && c.length > 0 && c.every(b => b && b.type === "context");
+}
 function renderRun(entries, into) {
   let prevRole = null;
   for (const e of entries) {
     if (!isVisible(e)) continue;
+    const ctx = isContextEntry(e);
     const firstOfRun = e.type !== prevRole;
     let node = null;
     try {
@@ -1115,7 +1154,7 @@ function renderRun(entries, into) {
     }
     if (node) {
       into.appendChild(node);
-      prevRole = e.type;
+      if (!ctx) prevRole = e.type;
     }
   }
 }
@@ -1421,7 +1460,7 @@ function setupCopy() {
 
 // ---------- expand / collapse / keyboard ----------
 function expandAll(yes) {
-  for (const c of document.querySelectorAll(".thinking, .tool, .subagent, .askq")) {
+  for (const c of document.querySelectorAll(".thinking, .tool, .subagent, .askq, .context")) {
     c.classList.toggle("open", yes);
   }
   const btn = document.getElementById("btn-toggle-all");
@@ -1435,7 +1474,7 @@ function toggleAll(selector) {
 function setupKeys() {
   const toggle = document.getElementById("btn-toggle-all");
   if (toggle) toggle.addEventListener("click", () => {
-    const anyClosed = [...document.querySelectorAll(".thinking, .tool, .subagent, .askq")]
+    const anyClosed = [...document.querySelectorAll(".thinking, .tool, .subagent, .askq, .context")]
       .some(n => !n.classList.contains("open"));
     expandAll(anyClosed);
   });
