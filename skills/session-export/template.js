@@ -370,8 +370,9 @@ body * { font-size: inherit; font-family: inherit; }
   letter-spacing: 0.05em;
   margin: 1em 0;
 }
-/* TodoWrite items carry their own status glyph; drop the <ul> bullet. */
-.tool[data-tool="TodoWrite"] ul { list-style: none; padding-left: 0; }
+/* TodoWrite / update_plan items carry their own status glyph; drop the <ul> bullet. */
+.tool[data-tool="TodoWrite"] ul,
+.tool[data-tool="update_plan"] ul { list-style: none; padding-left: 0; }
 
 /* Bash command dressed up as a shell: green-on-black with a $ prompt.
    The prompt is a ::before glyph so it never lands in the copied text.
@@ -774,8 +775,9 @@ function renderToolCall(block) {
     return renderSubagent(DATA.subagents[subRef.agentId], block);
   }
 
-  // AskUserQuestion? Render questions + options as a card, marking the picks.
-  if (name === "AskUserQuestion") {
+  // AskUserQuestion (Claude) and request_user_input (Codex) share the same
+  // questions/options shape — render both as a question card.
+  if (name === "AskUserQuestion" || name === "request_user_input") {
     return renderAskQuestion(block, result);
   }
 
@@ -869,6 +871,27 @@ function renderToolCall(block) {
     case "TaskOutput":
       arg = (input.task_id != null ? "#" + input.task_id : "") + (input.block ? "  (awaited)" : "");
       break;
+    // ----- Codex (gpt) tools -----
+    case "exec_command":
+      arg = "$ " + (input.cmd || "");
+      bodyChildren.push(el("pre", { class: "shell-command", text: input.cmd || "" }));
+      break;
+    case "write_stdin":
+      arg = "stdin" + (input.session_id != null ? " #" + input.session_id : "");
+      if (input.chars) bodyChildren.push(el("pre", { text: String(input.chars) }));
+      break;
+    case "update_plan": {
+      const steps = Array.isArray(input.plan) ? input.plan : [];
+      arg = steps.length + " step" + (steps.length === 1 ? "" : "s");
+      if (input.explanation) bodyChildren.push(el("div", { class: "md", html: md(String(input.explanation)) }));
+      const ul = el("ul");
+      for (const s of steps) {
+        const g = s.status === "completed" ? "✓ " : s.status === "in_progress" ? "▸ " : "• ";
+        ul.appendChild(el("li", { text: g + (s.step || "") }));
+      }
+      bodyChildren.push(ul);
+      break;
+    }
     default:
       arg = (input.description || input.command || input.file_path || "");
       preview = JSON.stringify(input).slice(0, 200);
@@ -989,7 +1012,7 @@ function renderEntry(e, opts) {
 
   if (firstOfRun) {
     const meta = el("div", { class: "meta" }, [
-      el("span", { class: "role-label " + (isUser ? "role-user" : "role-asst"), text: isUser ? "You" : "Claude" }),
+      el("span", { class: "role-label " + (isUser ? "role-user" : "role-asst"), text: isUser ? "You" : (DATA.header.assistantLabel || "Claude") }),
       el("span", { text: fmtTime(e.timestamp) }),
     ]);
     wrap.appendChild(meta);
@@ -1091,15 +1114,18 @@ function renderHead() {
       '<span><b>cwd:</b>' + escapeHtml(H.cwd || "") + '</span>' +
       (H.model ? '<span><b>model:</b>' + escapeHtml(H.model) + '</span>' : '') +
       '<span><b>msgs:</b>' + messageCount + '</span>' +
-      '<span><b>tokens:</b>' + fmtTokens(T.input + T.output) +
-        ' (' + fmtTokens(T.input) + ' in / ' + fmtTokens(T.output) + ' out, cache ' +
-        fmtTokens(T.cacheRead) + 'r/' + fmtTokens(T.cacheWrite) + 'w)</span>' +
-      '<span><b>cost~</b>' + fmtCost(T.estCostUSD || 0) + '</span>' +
+      ((T.input + T.output) > 0
+        ? '<span><b>tokens:</b>' + fmtTokens(T.input + T.output) +
+            ' (' + fmtTokens(T.input) + ' in / ' + fmtTokens(T.output) + ' out, cache ' +
+            fmtTokens(T.cacheRead) + 'r/' + fmtTokens(T.cacheWrite) + 'w)</span>'
+        : '') +
+      (T.estCostUSD > 0 ? '<span><b>cost~</b>' + fmtCost(T.estCostUSD) + '</span>' : '') +
       (H.gitBranch ? '<span><b>branch:</b>' + escapeHtml(H.gitBranch) + '</span>' : '') +
       (rTotal ? '<span title="' + escapeHtml(rDetail) + '" style="color:var(--warn)"><b>redacted:</b>' + rTotal + '</span>' : '');
   }
   const h1 = document.querySelector(".sidebar-head h1");
-  if (h1) h1.textContent = "Claude Code session";
+  if (h1) h1.textContent = H.title || "Claude Code session";
+  document.title = H.title || "Claude Code Session";
   const sid = document.querySelector(".sidebar-head .session-id");
   if (sid) sid.textContent = H.sessionId || "";
 }
