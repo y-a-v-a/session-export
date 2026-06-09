@@ -895,6 +895,24 @@ function renderToolCall(block) {
     case "TaskOutput":
       arg = (input.task_id != null ? "#" + input.task_id : "") + (input.block ? "  (awaited)" : "");
       break;
+    case "TaskStop": {
+      arg = input.task_id != null ? "#" + input.task_id : "";
+      // Result is a JSON string {message, task_id, task_type, command}; the
+      // message embeds the whole command, so split it off and show the command
+      // as a shell card instead of dumping raw JSON.
+      let out = null; try { out = JSON.parse(toolResultText(result && result.content)); } catch {}
+      if (out) {
+        const msg = (typeof out.message === "string" ? out.message.split("(")[0] : "stopped").trim();
+        bodyChildren.push(el("div", { class: "tool-result-label", text: "STOPPED" }));
+        bodyChildren.push(el("pre", { text: msg + (out.task_type ? "  [" + out.task_type + "]" : "") }));
+        if (out.command) {
+          bodyChildren.push(el("div", { class: "tool-result-label", text: "COMMAND" }));
+          bodyChildren.push(el("pre", { class: "shell-command", text: String(out.command) }));
+        }
+        skipResult = true;
+      }
+      break;
+    }
     // ----- Codex (gpt) tools -----
     case "exec_command":
       arg = "$ " + (input.cmd || "");
@@ -1257,7 +1275,7 @@ function buildTree() {
               arg = (String(b.input.plan).split("\\n").map(s => s.trim()).find(Boolean) || "plan").replace(/^#+\\s*/, "");
             } else if (b.name === "Task" && b.input) {
               arg = (b.input.subagent_type ? b.input.subagent_type + ": " : "") + (b.input.description || "");
-            } else if (b.name === "TaskOutput" && b.input && b.input.task_id != null) {
+            } else if ((b.name === "TaskOutput" || b.name === "TaskStop") && b.input && b.input.task_id != null) {
               arg = "#" + b.input.task_id;
             }
             childRows.push({ kind: "tool", text: "↳ " + b.name + " " + relPath(String(arg)).slice(0, 80), uuid: e.uuid, filter: "tool" });
