@@ -328,6 +328,21 @@ body * { font-size: inherit; font-family: inherit; }
 .thinking.open .thinking-body { display: block; }
 .thinking-body pre { white-space: pre-wrap; margin: 0; font-family: ui-monospace, monospace; }
 
+/* Injected context / instructions (foldable) */
+.context { margin: 0.5em var(--base-padding); }
+.context-head {
+  cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: 0.375em;
+  padding: 0.25em 0;
+  color: var(--dim); font-size: 0.8em;
+  font-family: ui-monospace, monospace;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.context-head::before { content: "▸"; opacity: 0.7; transition: transform 0.1s; display: inline-block; }
+.context.open .context-head::before { transform: rotate(90deg); }
+.context-body { display: none; padding: 0.25em 0 0.25em 0.75em; border-left: 2px solid var(--border); color: var(--muted); }
+.context.open .context-body { display: block; }
+
 /* Tools */
 .tool {
   background: var(--toolBg);
@@ -370,8 +385,9 @@ body * { font-size: inherit; font-family: inherit; }
   letter-spacing: 0.05em;
   margin: 1em 0;
 }
-/* TodoWrite items carry their own status glyph; drop the <ul> bullet. */
-.tool[data-tool="TodoWrite"] ul { list-style: none; padding-left: 0; }
+/* TodoWrite / update_plan items carry their own status glyph; drop the <ul> bullet. */
+.tool[data-tool="TodoWrite"] ul,
+.tool[data-tool="update_plan"] ul { list-style: none; padding-left: 0; }
 
 /* Bash command dressed up as a shell: green-on-black with a $ prompt.
    The prompt is a ::before glyph so it never lands in the copied text.
@@ -730,6 +746,14 @@ function renderText(text) {
   return el("div", { class: "md", html: md(text) });
 }
 
+// Foldable, collapsed-by-default disclosure for injected context/instructions.
+function renderContext(block) {
+  const card = el("div", { class: "context", data: { kind: "context" } });
+  card.appendChild(el("div", { class: "context-head", onclick: () => card.classList.toggle("open") }, block.summary || "context"));
+  card.appendChild(el("div", { class: "context-body" }, [el("div", { class: "md", html: md(String(block.text || "")) })]));
+  return card;
+}
+
 // ---------- tool result lookup ----------
 // Map tool_use_id -> tool_result content (string or array of blocks)
 const TOOL_RESULTS = new Map();
@@ -774,8 +798,9 @@ function renderToolCall(block) {
     return renderSubagent(DATA.subagents[subRef.agentId], block);
   }
 
-  // AskUserQuestion? Render questions + options as a card, marking the picks.
-  if (name === "AskUserQuestion") {
+  // AskUserQuestion (Claude) and request_user_input (Codex) share the same
+  // questions/options shape — render both as a question card.
+  if (name === "AskUserQuestion" || name === "request_user_input") {
     return renderAskQuestion(block, result);
   }
 
@@ -783,6 +808,7 @@ function renderToolCall(block) {
   let arg = "";
   let preview = "";
   let bodyChildren = [];
+  let skipResult = false; // when a case renders the result itself
   switch (name) {
     case "Bash":
       arg = "$ " + (input.command || "");
@@ -869,6 +895,83 @@ function renderToolCall(block) {
     case "TaskOutput":
       arg = (input.task_id != null ? "#" + input.task_id : "") + (input.block ? "  (awaited)" : "");
       break;
+    case "TaskStop": {
+      arg = input.task_id != null ? "#" + input.task_id : "";
+      // Result is a JSON string {message, task_id, task_type, command}; the
+      // message embeds the whole command, so split it off and show the command
+      // as a shell card instead of dumping raw JSON.
+      let out = null; try { out = JSON.parse(toolResultText(result && result.content)); } catch {}
+      if (out) {
+        const msg = (typeof out.message === "string" ? out.message.split("(")[0] : "stopped").trim();
+        bodyChildren.push(el("div", { class: "tool-result-label", text: "STOPPED" }));
+        bodyChildren.push(el("pre", { text: msg + (out.task_type ? "  [" + out.task_type + "]" : "") }));
+        if (out.command) {
+          bodyChildren.push(el("div", { class: "tool-result-label", text: "COMMAND" }));
+          bodyChildren.push(el("pre", { class: "shell-command", text: String(out.command) }));
+        }
+        skipResult = true;
+      }
+      break;
+    }
+    // ----- Codex (gpt) tools -----
+    case "exec_command":
+      arg = "$ " + (input.cmd || "");
+      bodyChildren.push(el("pre", { class: "shell-command", text: input.cmd || "" }));
+      break;
+    case "write_stdin":
+      arg = "stdin" + (input.session_id != null ? " #" + input.session_id : "");
+      if (input.chars) bodyChildren.push(el("pre", { text: String(input.chars) }));
+      break;
+    case "update_plan": {
+      const steps = Array.isArray(input.plan) ? input.plan : [];
+      arg = steps.length + " step" + (steps.length === 1 ? "" : "s");
+      if (input.explanation) bodyChildren.push(el("div", { class: "md", html: md(String(input.explanation)) }));
+      const ul = el("ul");
+      for (const s of steps) {
+        const g = s.status === "completed" ? "✓ " : s.status === "in_progress" ? "▸ " : "• ";
+        ul.appendChild(el("li", { text: g + (s.step || "") }));
+      }
+      bodyChildren.push(ul);
+      break;
+    }
+    // ----- Codex multi-agent tools (namespace multi_agent_v1) -----
+    case "spawn_agent": {
+      let info = null; try { info = JSON.parse(toolResultText(result && result.content)); } catch {}
+      arg = "spawn agent" + (info && info.nickname ? " — " + info.nickname : "");
+      if (info && (info.nickname || info.agent_id)) {
+        bodyChildren.push(el("div", { class: "tool-result-label", text: "AGENT" }));
+        bodyChildren.push(el("pre", { text: ((info.nickname ? info.nickname + "  " : "") + (info.agent_id || "")).trim() }));
+      }
+      if (input.message) {
+        bodyChildren.push(el("div", { class: "tool-result-label", text: "TASK" }));
+        bodyChildren.push(el("div", { class: "md", html: md(String(input.message)) }));
+      }
+      skipResult = true;
+      break;
+    }
+    case "wait_agent": {
+      arg = "wait agent" + (Array.isArray(input.targets) && input.targets.length ? " — " + input.targets.join(", ") : "");
+      let out = null; try { out = JSON.parse(toolResultText(result && result.content)); } catch {}
+      const statusMap = out && out.status;
+      if (statusMap && typeof statusMap === "object") {
+        for (const [agentId, stateObj] of Object.entries(statusMap)) {
+          if (stateObj && typeof stateObj === "object") {
+            for (const [state, val] of Object.entries(stateObj)) {
+              bodyChildren.push(el("div", { class: "tool-result-label", text: String(state).toUpperCase() + " · " + agentId }));
+              bodyChildren.push(el("div", { class: "md", html: md(typeof val === "string" ? val : JSON.stringify(val, null, 2)) }));
+            }
+          } else {
+            bodyChildren.push(el("pre", { text: agentId + ": " + String(stateObj) }));
+          }
+        }
+        skipResult = true;
+      }
+      break;
+    }
+    case "close_agent":
+      arg = "close agent" + (input.target ? " — " + input.target : "");
+      skipResult = true;
+      break;
     default:
       arg = (input.description || input.command || input.file_path || "");
       preview = JSON.stringify(input).slice(0, 200);
@@ -884,7 +987,7 @@ function renderToolCall(block) {
   const body = el("div", { class: "tool-body" });
   for (const c of bodyChildren) body.appendChild(c);
 
-  if (result) {
+  if (result && !skipResult) {
     body.appendChild(el("div", { class: "tool-result-label", text: isErr ? "ERROR" : "RESULT" }));
     const txt = toolResultText(result.content);
     body.appendChild(el("pre", { text: txt.length > 8000 ? txt.slice(0, 8000) + "\\n…[truncated " + (txt.length - 8000) + " chars]" : txt }));
@@ -974,6 +1077,15 @@ function renderEntry(e, opts) {
   if (!e) return null;
   const t = e.type;
   if (t !== "user" && t !== "assistant") return null;
+
+  // Injected developer/system context (Codex) — a bare foldable card, no role label.
+  const _content = e.message && e.message.content;
+  if (Array.isArray(_content) && _content.length && _content.every(b => b && b.type === "context")) {
+    const wrap = el("div", { class: "entry", data: { kind: "context", uuid: e.uuid || "" } });
+    for (const b of _content) wrap.appendChild(renderContext(b));
+    return wrap;
+  }
+
   const isUser = t === "user";
   const firstOfRun = !opts || opts.firstOfRun !== false;
   const wrap = el("div", {
@@ -989,7 +1101,7 @@ function renderEntry(e, opts) {
 
   if (firstOfRun) {
     const meta = el("div", { class: "meta" }, [
-      el("span", { class: "role-label " + (isUser ? "role-user" : "role-asst"), text: isUser ? "You" : "Claude" }),
+      el("span", { class: "role-label " + (isUser ? "role-user" : "role-asst"), text: isUser ? "You" : (DATA.header.assistantLabel || "Claude") }),
       el("span", { text: fmtTime(e.timestamp) }),
     ]);
     wrap.appendChild(meta);
@@ -1038,10 +1150,17 @@ function isVisible(e) {
   }
   return true;
 }
+// Injected-context cards render bare (no role header); they must stay
+// transparent to run-grouping so they don't suppress the next turn's header.
+function isContextEntry(e) {
+  const c = e && e.message && e.message.content;
+  return Array.isArray(c) && c.length > 0 && c.every(b => b && b.type === "context");
+}
 function renderRun(entries, into) {
   let prevRole = null;
   for (const e of entries) {
     if (!isVisible(e)) continue;
+    const ctx = isContextEntry(e);
     const firstOfRun = e.type !== prevRole;
     let node = null;
     try {
@@ -1053,7 +1172,7 @@ function renderRun(entries, into) {
     }
     if (node) {
       into.appendChild(node);
-      prevRole = e.type;
+      if (!ctx) prevRole = e.type;
     }
   }
 }
@@ -1091,15 +1210,18 @@ function renderHead() {
       '<span><b>cwd:</b>' + escapeHtml(H.cwd || "") + '</span>' +
       (H.model ? '<span><b>model:</b>' + escapeHtml(H.model) + '</span>' : '') +
       '<span><b>msgs:</b>' + messageCount + '</span>' +
-      '<span><b>tokens:</b>' + fmtTokens(T.input + T.output) +
-        ' (' + fmtTokens(T.input) + ' in / ' + fmtTokens(T.output) + ' out, cache ' +
-        fmtTokens(T.cacheRead) + 'r/' + fmtTokens(T.cacheWrite) + 'w)</span>' +
-      '<span><b>cost~</b>' + fmtCost(T.estCostUSD || 0) + '</span>' +
+      ((T.input + T.output) > 0
+        ? '<span><b>tokens:</b>' + fmtTokens(T.input + T.output) +
+            ' (' + fmtTokens(T.input) + ' in / ' + fmtTokens(T.output) + ' out, cache ' +
+            fmtTokens(T.cacheRead) + 'r/' + fmtTokens(T.cacheWrite) + 'w)</span>'
+        : '') +
+      (T.estCostUSD > 0 ? '<span><b>cost~</b>' + fmtCost(T.estCostUSD) + '</span>' : '') +
       (H.gitBranch ? '<span><b>branch:</b>' + escapeHtml(H.gitBranch) + '</span>' : '') +
       (rTotal ? '<span title="' + escapeHtml(rDetail) + '" style="color:var(--warn)"><b>redacted:</b>' + rTotal + '</span>' : '');
   }
   const h1 = document.querySelector(".sidebar-head h1");
-  if (h1) h1.textContent = "Claude Code session";
+  if (h1) h1.textContent = H.title || "Claude Code session";
+  document.title = H.title || "Claude Code Session";
   const sid = document.querySelector(".sidebar-head .session-id");
   if (sid) sid.textContent = H.sessionId || "";
 }
@@ -1153,7 +1275,7 @@ function buildTree() {
               arg = (String(b.input.plan).split("\\n").map(s => s.trim()).find(Boolean) || "plan").replace(/^#+\\s*/, "");
             } else if (b.name === "Task" && b.input) {
               arg = (b.input.subagent_type ? b.input.subagent_type + ": " : "") + (b.input.description || "");
-            } else if (b.name === "TaskOutput" && b.input && b.input.task_id != null) {
+            } else if ((b.name === "TaskOutput" || b.name === "TaskStop") && b.input && b.input.task_id != null) {
               arg = "#" + b.input.task_id;
             }
             childRows.push({ kind: "tool", text: "↳ " + b.name + " " + relPath(String(arg)).slice(0, 80), uuid: e.uuid, filter: "tool" });
@@ -1356,7 +1478,7 @@ function setupCopy() {
 
 // ---------- expand / collapse / keyboard ----------
 function expandAll(yes) {
-  for (const c of document.querySelectorAll(".thinking, .tool, .subagent, .askq")) {
+  for (const c of document.querySelectorAll(".thinking, .tool, .subagent, .askq, .context")) {
     c.classList.toggle("open", yes);
   }
   const btn = document.getElementById("btn-toggle-all");
@@ -1370,7 +1492,7 @@ function toggleAll(selector) {
 function setupKeys() {
   const toggle = document.getElementById("btn-toggle-all");
   if (toggle) toggle.addEventListener("click", () => {
-    const anyClosed = [...document.querySelectorAll(".thinking, .tool, .subagent, .askq")]
+    const anyClosed = [...document.querySelectorAll(".thinking, .tool, .subagent, .askq, .context")]
       .some(n => !n.classList.contains("open"));
     expandAll(anyClosed);
   });
