@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>session-export — build summary &amp; architecture</title>
+<style>
+  :root {
+    --bg: #faf9f5;
+    --panel: #ffffff;
+    --text: #1f1e1d;
+    --muted: #6b6660;
+    --border: #e1dccf;
+    --accent: #b85a3d;
+    --accent2: #759ac8;
+    --good: #2e7d32;
+    --warn: #8a6d00;
+    --code-bg: #f1ece0;
+    --shell-bg: #0b0e0b;
+    --shell-fg: #4cd47a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141413;
+      --panel: #1f1e1d;
+      --text: #e3d8c4;
+      --muted: #a89a82;
+      --border: #34302b;
+      --accent: #d97757;
+      --accent2: #569cd6;
+      --good: #b5bd68;
+      --warn: #f0c674;
+      --code-bg: #0e0d0c;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { font-size: 16px; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    font-size: 1em;
+  }
+  .wrap { max-width: 800px; margin: auto; padding: 2.5em 1.25em 4em; }
+  header.hero { border-bottom: 2px solid var(--border); padding-bottom: 1.25em; margin-bottom: 2em; }
+  h1 { font-size: 2em; line-height: 1.2; margin: 0 0 0.2em; }
+  h1 .bot { font-size: 1.1em; }
+  h2 {
+    font-size: 1.3em; margin: 2em 0 0.6em; padding-bottom: 0.2em;
+    border-bottom: 1px solid var(--border);
+  }
+  h3 { font-size: 1.05em; margin: 1.4em 0 0.4em; color: var(--accent); }
+  p { margin: 0.7em 0; }
+  .lede { font-size: 1.1em; color: var(--muted); }
+  a { color: var(--accent); }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 0.25em;
+    font-size: 0.85em;
+  }
+  .tag {
+    display: inline-block; font-size: 0.7em; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 0.2em 0.6em; border-radius: 1em; vertical-align: middle;
+    border: 1px solid var(--border); color: var(--muted);
+  }
+  .tag.claude { color: var(--accent2); border-color: var(--accent2); }
+  .tag.codex { color: var(--good); border-color: var(--good); }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 0.9em; }
+  th, td { border: 1px solid var(--border); padding: 0.5em 0.7em; text-align: left; vertical-align: top; }
+  th { background: var(--code-bg); font-weight: 600; }
+  tr:nth-child(even) td { background: color-mix(in srgb, var(--code-bg) 45%, transparent); }
+  ul { padding-left: 1.3em; }
+  li { margin: 0.3em 0; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 0.5em; padding: 1em 1.25em; margin: 1em 0;
+  }
+  .callout {
+    border-left: 4px solid var(--accent); background: var(--panel);
+    border-radius: 0 0.4em 0.4em 0; padding: 0.9em 1.1em; margin: 1.2em 0;
+  }
+  .callout h3 { margin-top: 0; color: var(--accent); }
+
+  /* pipeline diagram */
+  .pipe { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0.5em; margin: 1.2em 0; }
+  .pipe .step {
+    flex: 1 1 7em; min-width: 7em; text-align: center;
+    border: 1px solid var(--border); border-radius: 0.4em;
+    padding: 0.6em 0.4em; background: var(--panel);
+  }
+  .pipe .step b { display: block; font-size: 0.9em; }
+  .pipe .step span { font-size: 0.72em; color: var(--muted); }
+  .pipe .arrow { align-self: center; color: var(--accent); font-weight: 700; }
+
+  .shell {
+    background: var(--shell-bg); color: var(--shell-fg);
+    border-radius: 0.4em; padding: 0.8em 1em; margin: 0.8em 0;
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.82em;
+    overflow-x: auto; text-shadow: 0 0 2px rgba(76,212,122,0.35);
+  }
+  .shell .p { color: #2f8f50; }
+
+  /* timeline */
+  .timeline { list-style: none; padding-left: 0; margin: 1em 0; }
+  .timeline > li {
+    position: relative; padding-left: 1.4em; margin: 0.9em 0;
+    border-left: 2px solid var(--border);
+    padding-bottom: 0.3em; margin-left: 0.3em;
+  }
+  .timeline > li::before {
+    content: ""; position: absolute; left: -0.45em; top: 0.35em;
+    width: 0.7em; height: 0.7em; border-radius: 50%;
+    background: var(--accent); border: 2px solid var(--bg);
+  }
+  .timeline b { display: block; }
+  .timeline small { color: var(--muted); }
+
+  .check li::marker { content: "✓ "; }
+  .check li { list-style: "✓ "; }
+  .todo li { list-style: "○ "; color: var(--muted); }
+
+  .commits { font-family: ui-monospace, Menlo, monospace; font-size: 0.82em; }
+  .commits .sha { color: var(--accent2); }
+
+  footer { margin-top: 3em; padding-top: 1.2em; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.85em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1><span class="bot">🤖</span> session-export</h1>
+  <p class="lede">A single-file, offline HTML exporter for coding-agent
+  sessions — now spanning <strong>Claude Code</strong> and <strong>OpenAI
+  Codex</strong>. This page summarizes the work done across the session and
+  the resulting architecture.</p>
+  <p>
+    <span class="tag claude">Claude Code</span>
+    <span class="tag codex">OpenAI Codex</span>
+    <span class="tag">MIT</span>
+    <span class="tag">no deps · Node 18+</span>
+    <span class="tag">no tracking</span>
+  </p>
+</header>
+
+<h2>What it does</h2>
+<p>Reads a session's <code>.jsonl</code> transcript straight off disk and
+renders it as one self-contained <code>.html</code> file — messages,
+thinking/reasoning, every tool call with its result, and subagent transcripts
+inline. No network, no CDN, no base64; the JSON payload is embedded and a small
+client script renders it with a searchable sidebar, themes, and collapsible
+blocks. A secret-redaction pass scrubs credential shapes before writing.</p>
+
+<div class="pipe">
+  <div class="step"><b>.jsonl</b><span>Claude / Codex transcript</span></div>
+  <div class="arrow">→</div>
+  <div class="step"><b>parser</b><span>export.js / codex-export.js</span></div>
+  <div class="arrow">→</div>
+  <div class="step"><b>payload</b><span>normalized entries</span></div>
+  <div class="arrow">→</div>
+  <div class="step"><b>redact.js</b><span>scrub secrets</span></div>
+  <div class="arrow">→</div>
+  <div class="step"><b>template.js</b><span>inline HTML+CSS+JS</span></div>
+  <div class="arrow">→</div>
+  <div class="step"><b>.html</b><span>offline, one file</span></div>
+</div>
+
+<h2>Architecture</h2>
+<p>The key design move: <strong>one format-agnostic renderer</strong>. Both
+exporters normalize their very different transcripts into the same
+Claude-shaped payload (<code>{ header, entries[], subagents }</code>), so the
+entire renderer, redaction pass, themes, and chrome are shared.</p>
+
+<table>
+  <thead><tr><th>File</th><th>Lines</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td><code>template.js</code></td><td>1600</td><td>Inline CSS + scaffold + client renderer (shared by both CLIs)</td></tr>
+    <tr><td><code>export.js</code></td><td>424</td><td>Claude Code resolver + jsonl parser + payload builder</td></tr>
+    <tr><td><code>codex-export.js</code></td><td>288</td><td>OpenAI Codex rollout resolver + payload builder</td></tr>
+    <tr><td><code>redact.js</code></td><td>85</td><td>Shared secret-redaction rules (extracted this session)</td></tr>
+    <tr><td><code>themes.css</code></td><td>—</td><td>Optional extra themes; appended &amp; auto-discovered (ships <code>cool</code>)</td></tr>
+    <tr><td><code>SKILL.md</code></td><td>—</td><td>Dual-CLI skill manifest, used by both plugins</td></tr>
+  </tbody>
+</table>
+
+<h3>Dual packaging</h3>
+<p>The repo is simultaneously a plugin for both tools, sharing the one skill:</p>
+<table>
+  <thead><tr><th></th><th>Claude Code</th><th>OpenAI Codex</th></tr></thead>
+  <tbody>
+    <tr><td>Manifest</td><td><code>.claude-plugin/plugin.json</code></td><td><code>.codex-plugin/plugin.json</code></td></tr>
+    <tr><td>Marketplace</td><td><code>.claude-plugin/marketplace.json</code></td><td><code>.agents/plugins/marketplace.json</code></td></tr>
+    <tr><td>Skills field</td><td><code>["./skills/session-export"]</code></td><td><code>"./skills/"</code></td></tr>
+    <tr><td>Sessions dir</td><td><code>$CLAUDE_CONFIG_DIR</code> / <code>~/.claude</code></td><td><code>$CODEX_HOME</code> / <code>~/.codex</code></td></tr>
+  </tbody>
+</table>
+
+<h2>Tool-call rendering</h2>
+<p>Instead of dumping raw JSON, each tool gets a purpose-built card. Coverage
+added this session:</p>
+<table>
+  <thead><tr><th>Tool</th><th>Source</th><th>Rendered as</th></tr></thead>
+  <tbody>
+    <tr><td><code>AskUserQuestion</code></td><td><span class="tag claude">CC</span></td><td>Question + options card, chosen pick highlighted</td></tr>
+    <tr><td><code>Skill</code></td><td><span class="tag claude">CC</span></td><td>Skill name + args block</td></tr>
+    <tr><td><code>ToolSearch</code></td><td><span class="tag claude">CC</span></td><td>Query + matched tool names</td></tr>
+    <tr><td><code>TaskCreate / Update / List / Output / Stop</code></td><td><span class="tag claude">CC</span></td><td>Subject / status glyphs / shell card</td></tr>
+    <tr><td><code>ExitPlanMode</code></td><td><span class="tag claude">CC</span></td><td>Plan rendered as markdown</td></tr>
+    <tr><td><code>exec_command</code></td><td><span class="tag codex">CX</span></td><td>Green terminal shell card (like Bash)</td></tr>
+    <tr><td><code>update_plan</code></td><td><span class="tag codex">CX</span></td><td>Checklist with status glyphs</td></tr>
+    <tr><td><code>request_user_input</code></td><td><span class="tag codex">CX</span></td><td>Reuses the question card</td></tr>
+    <tr><td><code>spawn / wait / close_agent</code></td><td><span class="tag codex">CX</span></td><td>Decorated multi-agent cards (findings as markdown)</td></tr>
+  </tbody>
+</table>
+<div class="shell"><span class="p">$ </span>STOREFRONT_PORT=3987 ts-node server.ts &amp; curl -sL localhost:3987/</div>
+<p style="font-size:0.85em;color:var(--muted);margin-top:-0.4em">↑ how shell commands render in both exporters.</p>
+
+<h2>Codex support — the format gap</h2>
+<p>Codex rollouts are OpenAI Responses items, mapped onto the shared payload:</p>
+<table>
+  <thead><tr><th>Codex record</th><th>→ payload block</th></tr></thead>
+  <tbody>
+    <tr><td><code>session_meta</code> + <code>turn_context</code></td><td>header (id, cwd, model, tokens)</td></tr>
+    <tr><td><code>message</code> (user / assistant)</td><td>text turn</td></tr>
+    <tr><td><code>function_call</code> / <code>_output</code></td><td>tool_use / tool_result (paired by <code>call_id</code>)</td></tr>
+    <tr><td><code>reasoning</code></td><td>collapsed "reasoning hidden" note <em>(see below)</em></td></tr>
+    <tr><td><code>developer</code> role message</td><td>foldable "instructions" context card</td></tr>
+    <tr><td><code>&lt;subagent_notification&gt;</code></td><td>re-attributed from "user" → assistant turn</td></tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <h3>🔒 Finding: Codex encrypts its reasoning</h3>
+  <p>Every Codex <code>reasoning</code> item carries an empty <code>summary</code>
+  and an <code>encrypted_content</code> blob — and that blob is a
+  <strong>Fernet token</strong> (decoded: leading version byte <code>0x80</code>
+  plus an embedded timestamp matching the record). Fernet =
+  AES-128-CBC + HMAC-SHA256 under a key held <strong>server-side by OpenAI</strong>.</p>
+  <p>So the chain-of-thought is genuinely unrecoverable from the rollout — not a
+  limitation of the exporter. The export records <em>that</em> reasoning happened
+  (N steps), never <em>what</em>. Contrast: Claude stores thinking in cleartext.</p>
+</div>
+
+<h2>Session timeline</h2>
+<ul class="timeline">
+  <li><b>Sidebar UX</b><small>Drag-to-resize width, open/close CTA, slide animation, small-screen handling.</small></li>
+  <li><b>Polish</b><small>🤖 SVG favicon; configurable themes via auto-discovered <code>themes.css</code>; attribution footer; header alignment.</small></li>
+  <li><b>Restructure &amp; rename</b><small>Moved to <code>skills/</code> as a plugin; <code>$CLAUDE_CONFIG_DIR</code> support; MIT LICENSE; renamed <code>claude-export</code> → <code>session-export</code> (repo too).</small></li>
+  <li><b>Tool-call decorations</b><small>AskUserQuestion, Skill, ToolSearch, Task* family, ExitPlanMode, unlinked Task, TaskStop.</small></li>
+  <li><b>Codex exporter</b><small>New <code>codex-export.js</code>; extracted shared <code>redact.js</code>; Codex tool cards; multi-agent + subagent attribution; foldable developer-instructions.</small></li>
+  <li><b>Dual plugin packaging</b><small><code>.codex-plugin/plugin.json</code> + Codex marketplace, validated against OpenAI's schema; README/SKILL reframed for both CLIs.</small></li>
+</ul>
+
+<h2>Git state</h2>
+<p>Codex work is isolated on a feature branch; <code>main</code> stays the
+released Claude-only-history line. Commits unique to <code>codex-export</code>:</p>
+<div class="card commits">
+  <div><span class="sha">78ec12c</span> Format TaskStop output instead of dumping raw JSON</div>
+  <div><span class="sha">313aae0</span> Fold Codex injected developer/system instructions into a context card</div>
+  <div><span class="sha">29463f1</span> Decorate Codex multi-agent tools and fix subagent attribution</div>
+  <div><span class="sha">18efc2c</span> Add Codex (rollout) session exporter</div>
+  <div><span class="sha">104f43f</span> Extract shared secret-redaction into redact.js</div>
+</div>
+
+<h2>Status</h2>
+<ul class="check">
+  <li>Claude Code exporter — shipped on <code>main</code></li>
+  <li>Codex exporter + dual-CLI skill — on <code>codex-export</code> branch (pushed)</li>
+  <li>Both plugin manifests + marketplaces in place</li>
+</ul>
+<ul class="todo">
+  <li>Uncommitted this session: <code>README.md</code>, <code>SKILL.md</code> (the dual-CLI + manifest docs)</li>
+  <li>Optional: nest the full Codex subagent transcript (its own rollout file) as a card</li>
+  <li>Optional: GPT cost table / unwrap <code>exec_command</code> output header</li>
+  <li>Eventually: merge <code>codex-export</code> → <code>main</code></li>
+</ul>
+
+<footer>
+  Generated by <code>/html</code> from the working session ·
+  <a href="https://github.com/y-a-v-a/session-export">github.com/y-a-v-a/session-export</a> ·
+  by Vincent Bruijn
+</footer>
+
+</div>
+</body>
+</html>

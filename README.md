@@ -1,26 +1,29 @@
 # session-export
 
-A Claude Code skill that converts a session's `.jsonl` transcript (under
-`~/.claude/projects/<encoded-cwd>/`) into a single self-contained HTML
-file — user/assistant turns, thinking blocks, every tool call with its
-result, and any subagent transcripts rendered inline.
+A skill that converts a coding-agent session transcript into a single
+self-contained HTML file — user/assistant turns, thinking/reasoning, every
+tool call with its result, and any subagent transcripts rendered inline.
 
-> **Claude Code CLI only.** It reads the local `.jsonl` session transcripts
-> that the Claude Code command-line tool writes to `~/.claude/projects/`. The
-> desktop, web, and IDE-extension clients don't produce these files, so the
-> skill doesn't apply there.
+Works with two CLIs, each reading the local `.jsonl` transcripts that CLI
+writes:
+
+- **Claude Code** — `export.js`, reading `~/.claude/projects/<encoded-cwd>/`.
+- **OpenAI Codex** — `codex-export.js`, reading `~/.codex/sessions/…`.
+
+Both run offline against on-disk session files; the desktop/web/IDE clients of
+either tool don't produce these files.
 
 ![Exported session, dark skin](./session-export.png)
 
 ![Exported session, light skin](./session-export-2.png)
 
-The skill lives in `skills/session-export/` so it can be dropped into any
-Claude Code project.
+It ships both as a **Claude Code plugin/skill** (`.claude-plugin/`) and an
+**OpenAI Codex plugin/skill** (`.codex-plugin/`), with the skill itself in
+`skills/session-export/`.
 
 ## Install
 
-Copy it into a project, or symlink it user-globally so every project
-picks it up:
+**Claude Code** — copy the skill into a project, or symlink it user-globally:
 
 ```sh
 cp -R skills/session-export /path/to/other-project/.claude/skills/
@@ -28,21 +31,29 @@ cp -R skills/session-export /path/to/other-project/.claude/skills/
 ln -s "$PWD/skills/session-export" ~/.claude/skills/session-export
 ```
 
+**OpenAI Codex** — the repo is a Codex plugin (`.codex-plugin/plugin.json`).
+Add it to a Codex marketplace and install, or point Codex at this repo as a
+local plugin source. The bundled `session-export` skill is then available in
+Codex sessions.
+
 ## Use
 
-In Claude Code, run `/session-export`, or call it directly:
+In Claude Code, run `/session-export`, or call the matching exporter directly:
 
 ```sh
+# Claude Code session
 node skills/session-export/export.js [session-id-or-path] [--no-redact]
+# OpenAI Codex session
+node skills/session-export/codex-export.js [session-id-or-path] [--no-redact]
 ```
 
-- **no argument** — most recently modified main session for the current `cwd`
-- **session uuid** — looked up in the current project's directory
+- **no argument** — most recently modified session for the current context
+- **session id** — looked up in the CLI's session store
 - **path** — used directly
 - **`--no-redact`** — skip the credential-redaction pass
 
-The HTML is written to `claude-session-<ISO>_<sessionId>.html` in the
-current directory and its absolute path printed to stdout.
+The HTML is written to `claude-session-…` / `codex-session-…_<sessionId>.html`
+in the current directory and its absolute path printed to stdout.
 
 ## Secret redaction
 
@@ -85,10 +96,15 @@ inline `progress` records linked by `parentToolUseID` (deduped by inner
 ## Files
 
 ```
+.claude-plugin/plugin.json   — Claude Code plugin manifest (+ marketplace.json)
+.codex-plugin/plugin.json    — OpenAI Codex plugin manifest
+.agents/plugins/marketplace.json — Codex marketplace entry
 skills/session-export/
-  SKILL.md       — slash-command manifest
-  export.js      — session resolver, jsonl parser, payload builder
-  template.js    — inline CSS + scaffold + client renderer
+  SKILL.md       — skill manifest (used by both CLIs)
+  export.js      — Claude Code session resolver + payload builder
+  codex-export.js — OpenAI Codex rollout resolver + payload builder
+  redact.js      — shared secret-redaction pass
+  template.js    — inline CSS + scaffold + client renderer (shared)
   themes.css     — optional extra themes (cool example)
 ```
 

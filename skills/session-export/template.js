@@ -666,6 +666,28 @@ function fmtTokens(n) {
   return String(n);
 }
 function fmtCost(c) { return "$" + c.toFixed(c < 1 ? 4 : 2); }
+function fmtDuration(ms) {
+  if (!ms || ms < 0) return "";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return s + "s";
+  const m = Math.round(s / 60);
+  if (m < 60) return m + "m";
+  const h = Math.floor(m / 60), mm = m % 60;
+  if (h < 24) return h + "h" + (mm ? " " + mm + "m" : "");
+  const d = Math.floor(h / 24), hh = h % 24;
+  return d + "d" + (hh ? " " + hh + "h" : "");
+}
+// Tally main-thread tool calls for the summary header (shape-at-a-glance).
+function sessionToolStats(entries) {
+  let total = 0; const byName = {};
+  for (const e of entries) {
+    const c = e && e.message && e.message.content;
+    if (!Array.isArray(c)) continue;
+    for (const b of c) if (b && b.type === "tool_use") { total++; byName[b.name || "tool"] = (byName[b.name || "tool"] || 0) + 1; }
+  }
+  const ranked = Object.entries(byName).sort((a, b) => b[1] - a[1]);
+  return { total, ranked };
+}
 function relPath(s) {
   const cwd = DATA.header && DATA.header.cwd;
   if (!cwd || !s) return s || "";
@@ -1203,6 +1225,14 @@ function renderHead() {
   const R = H.redactions || {};
   const rTotal = Object.values(R).reduce((a, b) => a + b, 0);
   const rDetail = Object.entries(R).map(([k, n]) => k + ':' + n).join(', ');
+  // Session shape: duration + tool-call counts (incl. Bash/exec_command).
+  const durMs = (H.firstTimestamp && H.lastTimestamp)
+    ? (new Date(H.lastTimestamp).getTime() - new Date(H.firstTimestamp).getTime()) : 0;
+  const ts = sessionToolStats(DATA.entries);
+  const topN = ts.ranked.slice(0, 6);
+  const breakdown = topN.map(([n, c]) => escapeHtml(n) + " " + c).join(" · ")
+    + (ts.ranked.length > 6 ? " · +" + (ts.ranked.length - 6) + " more" : "");
+  const breakdownFull = ts.ranked.map(([n, c]) => n + ":" + c).join(", ");
   const hm = document.getElementById("head-meta");
   if (hm) {
     hm.innerHTML =
@@ -1210,6 +1240,11 @@ function renderHead() {
       '<span><b>cwd:</b>' + escapeHtml(H.cwd || "") + '</span>' +
       (H.model ? '<span><b>model:</b>' + escapeHtml(H.model) + '</span>' : '') +
       '<span><b>msgs:</b>' + messageCount + '</span>' +
+      (fmtDuration(durMs) ? '<span><b>duration:</b>' + fmtDuration(durMs) + '</span>' : '') +
+      (ts.total > 0
+        ? '<span title="' + escapeHtml(breakdownFull) + '"><b>tools:</b>' + ts.total +
+            (breakdown ? ' <span style="color:var(--muted)">(' + breakdown + ')</span>' : '') + '</span>'
+        : '') +
       ((T.input + T.output) > 0
         ? '<span><b>tokens:</b>' + fmtTokens(T.input + T.output) +
             ' (' + fmtTokens(T.input) + ' in / ' + fmtTokens(T.output) + ' out, cache ' +

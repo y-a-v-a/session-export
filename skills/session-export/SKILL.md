@@ -1,36 +1,42 @@
 ---
 name: session-export
-description: Export the current (or a specified) Claude Code session to a single self-contained HTML file, including any subagent transcripts. Use when the user asks to "export this session", "save the chat as HTML", "share this conversation", or wants an offline-readable record of a Claude Code session.
+description: Export the current (or a specified) Claude Code or OpenAI Codex session to a single self-contained HTML file, including any subagent transcripts. Use when the user asks to "export this session", "save the chat as HTML", "share this conversation", or wants an offline-readable record of a coding-agent session.
 ---
 
 # session-export
 
-Produces a one-page, fully offline HTML view of a Claude Code session — user turns, assistant turns, thinking blocks, tool calls and results, and any subagent (Task/Agent) transcripts rendered inline.
+Produces a one-page, fully offline HTML view of a Claude Code or OpenAI Codex session — user/assistant turns, thinking/reasoning, tool calls and results, and any subagent transcripts rendered inline.
 
 ## When to invoke
 
 - User asks to "export the current session", "save this chat", "make an HTML of this conversation".
-- User wants to share a session with someone who doesn't have Claude Code installed.
+- User wants to share a session with someone who doesn't have the CLI installed.
 
 ## How to run
 
-`export.js` sits next to this `SKILL.md` — use that directory's path (it may be
-project-local or under `~/.claude/`, so don't hardcode a project-relative path):
+Two exporters sit next to this `SKILL.md` — use the one matching the CLI you're
+running in. Use that directory's path (it may be project-local or under
+`~/.claude/` or `~/.codex/`, so don't hardcode a project-relative path):
 
 ```
+# Claude Code
 node <this-skill-dir>/export.js [session-id-or-path] [--no-redact]
+# OpenAI Codex
+node <this-skill-dir>/codex-export.js [session-id-or-path] [--no-redact]
 ```
 
-Run it from the project root you want to export — auto-detection reads
-`<configDir>/projects/<encoded-cwd>/`, where configDir is `$CLAUDE_CONFIG_DIR`
-if set, else `~/.claude`.
+Run from the working directory of the session you want to export. Auto-detection:
 
-- **No argument**: auto-detects the most recently modified main session jsonl under that project dir (skips `agent-*.jsonl` siblings and empty stubs).
-- **Session uuid**: looks up `<uuid>.jsonl` in the current project's directory.
-- **Path**: uses it directly.
-- **`--no-redact`**: disable the secret-redaction pass (see below).
+- **Claude Code** (`export.js`): newest main session jsonl under
+  `<configDir>/projects/<encoded-cwd>/`, where configDir is `$CLAUDE_CONFIG_DIR`
+  if set, else `~/.claude` (skips `agent-*.jsonl` siblings and empty stubs).
+- **OpenAI Codex** (`codex-export.js`): newest `rollout-*.jsonl` under
+  `<codexHome>/sessions/`, where codexHome is `$CODEX_HOME` if set, else `~/.codex`.
 
-The script writes `claude-session-<ISO>_<sessionId>.html` to the current working directory and prints the absolute path. When secrets are redacted, a one-line summary is also written to stderr.
+Both accept a session id or an explicit path as the argument, and `--no-redact`
+to disable the secret-redaction pass (see below).
+
+The script writes `claude-session-…` / `codex-session-…_<sessionId>.html` to the current working directory and prints the absolute path. When secrets are redacted, a one-line summary is also written to stderr.
 
 ## Secret redaction
 
