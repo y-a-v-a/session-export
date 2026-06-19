@@ -343,6 +343,21 @@ body * { font-size: inherit; font-family: inherit; }
 .context-body { display: none; padding: 0.25em 0 0.25em 0.75em; border-left: 2px solid var(--border); color: var(--muted); }
 .context.open .context-body { display: block; }
 
+/* Slash command invocation (foldable) */
+.command, .command-static { font-family: ui-monospace, monospace; }
+.command-head {
+  cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: 0.4em;
+  padding: var(--base-padding);
+  color: var(--accent2); font-weight: 600;
+}
+.command-static { padding: var(--base-padding); color: var(--accent2); font-weight: 600; display: flex; gap: 0.4em; align-items: center; }
+.command-glyph { color: var(--muted); }
+.command-head::after { content: "▸"; margin-left: 0.25em; opacity: 0.7; transition: transform 0.1s; display: inline-block; }
+.command.open .command-head::after { transform: rotate(90deg); }
+.command-body { display: none; padding: 0 var(--base-padding) var(--base-padding); border-top: 1px solid var(--border); }
+.command.open .command-body { display: block; }
+
 /* Tools */
 .tool {
   background: var(--toolBg);
@@ -776,6 +791,51 @@ function renderContext(block) {
   return card;
 }
 
+// Flatten a message's content to text (string or array of text blocks).
+function entryText(e) {
+  const c = e && e.message && e.message.content;
+  if (typeof c === "string") return c;
+  if (Array.isArray(c)) return c.map(b => (b && b.type === "text") ? (b.text || "") : (typeof b === "string" ? b : "")).join("\\n");
+  return "";
+}
+
+// A Claude Code slash-command invocation is stored as a tiny user message
+// wrapping <command-message>/<command-name> (+ optional <command-args>); the
+// injected skill body is the next user entry with the same timestamp.
+function commandInfo(e) {
+  if (!e || e.type !== "user") return null;
+  const t = entryText(e);
+  if (!/^\\s*<command-(message|name)>/.test(t)) return null;
+  const name = (t.match(/<command-name>([^<]*)<\\/command-name>/) || [])[1] || "";
+  const message = (t.match(/<command-message>([^<]*)<\\/command-message>/) || [])[1] || "";
+  const args = (t.match(/<command-args>([\\s\\S]*?)<\\/command-args>/) || [])[1] || "";
+  return { name: name.trim(), message: message.trim(), args: args.trim() };
+}
+
+// Render a slash command as a "You" turn with a foldable card: the command
+// line is the summary, the injected skill instructions are the collapsed body.
+function renderCommand(e, info, bodyEntry) {
+  const wrap = el("div", { class: "entry first-of-run", data: { kind: "user", uuid: e.uuid || "" } });
+  wrap.appendChild(el("div", { class: "meta" }, [
+    el("span", { class: "role-label role-user", text: "You" }),
+    el("span", { text: fmtTime(e.timestamp) }),
+  ]));
+  const bubble = el("div", { class: "bubble user" });
+  const label = (info.name || "/command") + (info.args ? " " + info.args : "");
+  const head = [el("span", { class: "command-glyph", text: "⌘" }), el("span", { class: "command-name", text: label })];
+  const bodyText = bodyEntry ? entryText(bodyEntry) : "";
+  if (bodyText) {
+    const card = el("div", { class: "command", data: { kind: "command" } });
+    card.appendChild(el("div", { class: "command-head", onclick: () => card.classList.toggle("open") }, head));
+    card.appendChild(el("div", { class: "command-body" }, [el("div", { class: "md", html: md(bodyText) })]));
+    bubble.appendChild(card);
+  } else {
+    bubble.appendChild(el("div", { class: "command command-static" }, head));
+  }
+  wrap.appendChild(bubble);
+  return wrap;
+}
+
 // ---------- tool result lookup ----------
 // Map tool_use_id -> tool_result content (string or array of blocks)
 const TOOL_RESULTS = new Map();
@@ -924,6 +984,11 @@ function renderToolCall(block) {
     case "TaskOutput":
       arg = (input.task_id != null ? "#" + input.task_id : "") + (input.block ? "  (awaited)" : "");
       break;
+    case "TaskGet": {
+      const tid = input.taskId != null ? input.taskId : input.task_id;
+      arg = tid != null ? "#" + tid : "";
+      break;
+    }
     case "TaskStop": {
       arg = input.task_id != null ? "#" + input.task_id : "";
       // Result is a JSON string {message, task_id, task_type, command}; the
@@ -1034,7 +1099,7 @@ function renderSubagent(sub, parentBlock) {
   ]);
   card.appendChild(head);
   const body = el("div", { class: "subagent-body" });
-  renderRun(sub.entries || [], body);
+  renderRun(sub.entries || [], body, { inSubagent: true });
   card.appendChild(body);
   return card;
 }
@@ -1130,7 +1195,7 @@ function renderEntry(e, opts) {
 
   if (firstOfRun) {
     const meta = el("div", { class: "meta" }, [
-      el("span", { class: "role-label " + (isUser ? "role-user" : "role-asst"), text: isUser ? "You" : (DATA.header.assistantLabel || "Claude") }),
+      el("span", { class: "role-label " + (isUser ? "role-user" : "role-asst"), text: isUser ? ((opts && opts.inSubagent) ? "Prompt" : "You") : (DATA.header.assistantLabel || "Claude") }),
       el("span", { text: fmtTime(e.timestamp) }),
     ]);
     wrap.appendChild(meta);
@@ -1185,15 +1250,37 @@ function isContextEntry(e) {
   const c = e && e.message && e.message.content;
   return Array.isArray(c) && c.length > 0 && c.every(b => b && b.type === "context");
 }
-function renderRun(entries, into) {
+function renderRun(entries, into, opts) {
+  const inSubagent = !!(opts && opts.inSubagent);
   let prevRole = null;
-  for (const e of entries) {
-    if (!isVisible(e)) continue;
+  const consumed = new Set();
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    if (!isVisible(e) || consumed.has(e)) continue;
+
+    // Slash command: fold the command + its injected skill body into one card.
+    const info = commandInfo(e);
+    if (info) {
+      let bodyEntry = null;
+      for (let j = i + 1; j < entries.length; j++) {
+        const n = entries[j];
+        if (!isVisible(n)) continue;
+        if (n.type === "user" && n.timestamp === e.timestamp) bodyEntry = n;
+        break;
+      }
+      let node = null;
+      try { node = renderCommand(e, info, bodyEntry); } catch (err) {
+        node = el("div", { class: "entry" }, [el("div", { class: "err-text", text: "[render error: " + (err && err.message || err) + "]" })]);
+      }
+      if (node) { into.appendChild(node); if (bodyEntry) consumed.add(bodyEntry); prevRole = "user"; }
+      continue;
+    }
+
     const ctx = isContextEntry(e);
     const firstOfRun = e.type !== prevRole;
     let node = null;
     try {
-      node = renderEntry(e, { firstOfRun });
+      node = renderEntry(e, { firstOfRun, inSubagent });
     } catch (err) {
       node = el("div", { class: "entry" }, [
         el("div", { class: "err-text", text: "[render error: " + (err && err.message || err) + "]" }),
@@ -1319,6 +1406,8 @@ function buildTree() {
               arg = (b.input.subagent_type ? b.input.subagent_type + ": " : "") + (b.input.description || "");
             } else if ((b.name === "TaskOutput" || b.name === "TaskStop") && b.input && b.input.task_id != null) {
               arg = "#" + b.input.task_id;
+            } else if (b.name === "TaskGet" && b.input && (b.input.taskId != null || b.input.task_id != null)) {
+              arg = "#" + (b.input.taskId != null ? b.input.taskId : b.input.task_id);
             }
             childRows.push({ kind: "tool", text: "↳ " + b.name + " " + relPath(String(arg)).slice(0, 80), uuid: e.uuid, filter: "tool" });
           }
@@ -1520,7 +1609,7 @@ function setupCopy() {
 
 // ---------- expand / collapse / keyboard ----------
 function expandAll(yes) {
-  for (const c of document.querySelectorAll(".thinking, .tool, .subagent, .askq, .context")) {
+  for (const c of document.querySelectorAll(".thinking, .tool, .subagent, .askq, .context, .command")) {
     c.classList.toggle("open", yes);
   }
   const btn = document.getElementById("btn-toggle-all");
@@ -1534,7 +1623,7 @@ function toggleAll(selector) {
 function setupKeys() {
   const toggle = document.getElementById("btn-toggle-all");
   if (toggle) toggle.addEventListener("click", () => {
-    const anyClosed = [...document.querySelectorAll(".thinking, .tool, .subagent, .askq, .context")]
+    const anyClosed = [...document.querySelectorAll(".thinking, .tool, .subagent, .askq, .context, .command")]
       .some(n => !n.classList.contains("open"));
     expandAll(anyClosed);
   });
