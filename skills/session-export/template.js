@@ -805,6 +805,13 @@ function toolResultText(content) {
   return JSON.stringify(content, null, 2);
 }
 
+// Unwrap <system-reminder> pseudo-XML from displayed tool output — keep the
+// message (e.g. an empty-file Read warning), drop the tags.
+function stripSystemReminders(s) {
+  if (typeof s !== "string") return s;
+  return s.replace(/<\\/?system-reminder>/g, "").trim();
+}
+
 // ---------- tool call renderer ----------
 function renderToolCall(block) {
   const name = block.name || "tool";
@@ -1011,7 +1018,7 @@ function renderToolCall(block) {
 
   if (result && !skipResult) {
     body.appendChild(el("div", { class: "tool-result-label", text: isErr ? "ERROR" : "RESULT" }));
-    const txt = toolResultText(result.content);
+    const txt = stripSystemReminders(toolResultText(result.content));
     body.appendChild(el("pre", { text: txt.length > 8000 ? txt.slice(0, 8000) + "\\n…[truncated " + (txt.length - 8000) + " chars]" : txt }));
   }
   card.appendChild(body);
