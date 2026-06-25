@@ -406,9 +406,10 @@ body * { font-size: inherit; font-family: inherit; }
 
 /* Bash command dressed up as a shell: green-on-black with a $ prompt.
    The prompt is a ::before glyph so it never lands in the copied text.
-   Scoped under .tool-body pre so it outranks that rule (same base
-   specificity + an extra class) instead of fighting it. */
-.tool-body pre.shell-command {
+   Unscoped (just pre.shell-command) so it also applies to bang-command
+   blocks in user turns; later source order outranks .tool-body pre /
+   .bubble pre at equal specificity. */
+pre.shell-command {
   background: var(--shell-bg);
   color: var(--shell-fg);
   border: 1px solid var(--shell-border);
@@ -416,11 +417,24 @@ body * { font-size: inherit; font-family: inherit; }
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   text-shadow: 0 0 2px var(--shell-glow);
 }
-.tool-body pre.shell-command::before {
+pre.shell-command::before {
   content: "$ ";
   color: var(--shell-prompt);
   user-select: none;
 }
+
+/* bang-shell command run from the prompt (bash-input / bash-stdout). */
+.bash-block { padding: var(--base-padding); display: flex; flex-direction: column; gap: 0.4em; }
+.bash-block pre { margin: 0; }
+.bash-output {
+  background: var(--codeBg);
+  border-radius: 0.25em;
+  padding: 0.6em 0.8em;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.bash-output.bash-err { color: var(--bad); }
 
 /* Copy-to-clipboard — button revealed on hover over its host wrapper */
 .copy-host { position: relative; }
@@ -789,6 +803,26 @@ function renderContext(block) {
   card.appendChild(el("div", { class: "context-head", onclick: () => card.classList.toggle("open") }, block.summary || "context"));
   card.appendChild(el("div", { class: "context-body" }, [el("div", { class: "md", html: md(String(block.text || "")) })]));
   return card;
+}
+
+// A bang-shell command run from the prompt is stored as a user message wrapping
+// bash-input cmd and/or bash-stdout / bash-stderr — sometimes combined in one
+// message, sometimes the output is a separate following entry. Anchored on a
+// leading bash-* tag so prose merely quoting the tags isn't matched.
+function parseBashInteraction(text) {
+  if (typeof text !== "string" || !/^\\s*<bash-(input|stdout|stderr)>/.test(text)) return null;
+  const cmd = (text.match(/<bash-input>([\\s\\S]*?)<\\/bash-input>/) || [])[1];
+  const out = (text.match(/<bash-stdout>([\\s\\S]*?)<\\/bash-stdout>/) || [])[1] || "";
+  const err = (text.match(/<bash-stderr>([\\s\\S]*?)<\\/bash-stderr>/) || [])[1] || "";
+  if (cmd == null && !out && !err) return null;
+  return { cmd: cmd != null ? cmd.trim() : null, out: out.replace(/\\s+$/, ""), err: err.replace(/\\s+$/, "") };
+}
+function renderBashInteraction(info) {
+  const block = el("div", { class: "bash-block" });
+  if (info.cmd != null) block.appendChild(el("pre", { class: "shell-command", text: info.cmd }));
+  if (info.out.trim()) block.appendChild(el("pre", { class: "bash-output", text: info.out }));
+  if (info.err.trim()) block.appendChild(el("pre", { class: "bash-output bash-err", text: info.err }));
+  return block;
 }
 
 // Flatten a message's content to text (string or array of text blocks).
@@ -1205,7 +1239,9 @@ function renderEntry(e, opts) {
 
   const content = e.message && e.message.content;
   if (typeof content === "string") {
-    bubble.appendChild(renderText(content));
+    const bash = parseBashInteraction(content);
+    if (bash) bubble.appendChild(renderBashInteraction(bash));
+    else bubble.appendChild(renderText(content));
   } else if (Array.isArray(content)) {
     for (const b of content) {
       if (b.type === "text") {
