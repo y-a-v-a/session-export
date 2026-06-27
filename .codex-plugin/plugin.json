@@ -1,0 +1,25 @@
+{
+  "name": "session-export",
+  "version": "1.0.0",
+  "description": "Export an OpenAI Codex (or Claude Code) session to a single self-contained HTML file, including subagent transcripts.",
+  "author": {
+    "name": "Vincent Bruijn"
+  },
+  "homepage": "https://github.com/y-a-v-a/session-export",
+  "repository": "https://github.com/y-a-v-a/session-export",
+  "license": "MIT",
+  "keywords": ["export", "session", "transcript", "html", "codex", "claude-code"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Session Export",
+    "shortDescription": "Export a Codex/Claude session to a self-contained HTML file.",
+    "longDescription": "session-export turns a Codex rollout (or Claude Code session) JSONL transcript into one offline, self-contained HTML file — messages, reasoning, tool calls and results, and subagent transcripts — with a secret-redaction pass. No network access is needed to view the result.",
+    "developerName": "Vincent Bruijn",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Export this Codex session to a self-contained HTML file.",
+      "Save this conversation as an offline HTML transcript."
+    ]
+  }
+}

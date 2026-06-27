@@ -343,6 +343,21 @@ body * { font-size: inherit; font-family: inherit; }
 .context-body { display: none; padding: 0.25em 0 0.25em 0.75em; border-left: 2px solid var(--border); color: var(--muted); }
 .context.open .context-body { display: block; }
 
+/* Slash command invocation (foldable) */
+.command, .command-static { font-family: ui-monospace, monospace; }
+.command-head {
+  cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: 0.4em;
+  padding: var(--base-padding);
+  color: var(--accent2); font-weight: 600;
+}
+.command-static { padding: var(--base-padding); color: var(--accent2); font-weight: 600; display: flex; gap: 0.4em; align-items: center; }
+.command-glyph { color: var(--muted); }
+.command-head::after { content: "▸"; margin-left: 0.25em; opacity: 0.7; transition: transform 0.1s; display: inline-block; }
+.command.open .command-head::after { transform: rotate(90deg); }
+.command-body { display: none; padding: 0 var(--base-padding) var(--base-padding); border-top: 1px solid var(--border); }
+.command.open .command-body { display: block; }
+
 /* Tools */
 .tool {
   background: var(--toolBg);
@@ -391,9 +406,10 @@ body * { font-size: inherit; font-family: inherit; }
 
 /* Bash command dressed up as a shell: green-on-black with a $ prompt.
    The prompt is a ::before glyph so it never lands in the copied text.
-   Scoped under .tool-body pre so it outranks that rule (same base
-   specificity + an extra class) instead of fighting it. */
-.tool-body pre.shell-command {
+   Unscoped (just pre.shell-command) so it also applies to bang-command
+   blocks in user turns; later source order outranks .tool-body pre /
+   .bubble pre at equal specificity. */
+pre.shell-command {
   background: var(--shell-bg);
   color: var(--shell-fg);
   border: 1px solid var(--shell-border);
@@ -401,11 +417,24 @@ body * { font-size: inherit; font-family: inherit; }
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   text-shadow: 0 0 2px var(--shell-glow);
 }
-.tool-body pre.shell-command::before {
+pre.shell-command::before {
   content: "$ ";
   color: var(--shell-prompt);
   user-select: none;
 }
+
+/* bang-shell command run from the prompt (bash-input / bash-stdout). */
+.bash-block { padding: var(--base-padding); display: flex; flex-direction: column; gap: 0.4em; }
+.bash-block pre { margin: 0; }
+.bash-output {
+  background: var(--codeBg);
+  border-radius: 0.25em;
+  padding: 0.6em 0.8em;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.bash-output.bash-err { color: var(--bad); }
 
 /* Copy-to-clipboard — button revealed on hover over its host wrapper */
 .copy-host { position: relative; }
@@ -666,6 +695,28 @@ function fmtTokens(n) {
   return String(n);
 }
 function fmtCost(c) { return "$" + c.toFixed(c < 1 ? 4 : 2); }
+function fmtDuration(ms) {
+  if (!ms || ms < 0) return "";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return s + "s";
+  const m = Math.round(s / 60);
+  if (m < 60) return m + "m";
+  const h = Math.floor(m / 60), mm = m % 60;
+  if (h < 24) return h + "h" + (mm ? " " + mm + "m" : "");
+  const d = Math.floor(h / 24), hh = h % 24;
+  return d + "d" + (hh ? " " + hh + "h" : "");
+}
+// Tally main-thread tool calls for the summary header (shape-at-a-glance).
+function sessionToolStats(entries) {
+  let total = 0; const byName = {};
+  for (const e of entries) {
+    const c = e && e.message && e.message.content;
+    if (!Array.isArray(c)) continue;
+    for (const b of c) if (b && b.type === "tool_use") { total++; byName[b.name || "tool"] = (byName[b.name || "tool"] || 0) + 1; }
+  }
+  const ranked = Object.entries(byName).sort((a, b) => b[1] - a[1]);
+  return { total, ranked };
+}
 function relPath(s) {
   const cwd = DATA.header && DATA.header.cwd;
   if (!cwd || !s) return s || "";
@@ -754,6 +805,71 @@ function renderContext(block) {
   return card;
 }
 
+// A bang-shell command run from the prompt is stored as a user message wrapping
+// bash-input cmd and/or bash-stdout / bash-stderr — sometimes combined in one
+// message, sometimes the output is a separate following entry. Anchored on a
+// leading bash-* tag so prose merely quoting the tags isn't matched.
+function parseBashInteraction(text) {
+  if (typeof text !== "string" || !/^\\s*<bash-(input|stdout|stderr)>/.test(text)) return null;
+  const cmd = (text.match(/<bash-input>([\\s\\S]*?)<\\/bash-input>/) || [])[1];
+  const out = (text.match(/<bash-stdout>([\\s\\S]*?)<\\/bash-stdout>/) || [])[1] || "";
+  const err = (text.match(/<bash-stderr>([\\s\\S]*?)<\\/bash-stderr>/) || [])[1] || "";
+  if (cmd == null && !out && !err) return null;
+  return { cmd: cmd != null ? cmd.trim() : null, out: out.replace(/\\s+$/, ""), err: err.replace(/\\s+$/, "") };
+}
+function renderBashInteraction(info) {
+  const block = el("div", { class: "bash-block" });
+  if (info.cmd != null) block.appendChild(el("pre", { class: "shell-command", text: info.cmd }));
+  if (info.out.trim()) block.appendChild(el("pre", { class: "bash-output", text: info.out }));
+  if (info.err.trim()) block.appendChild(el("pre", { class: "bash-output bash-err", text: info.err }));
+  return block;
+}
+
+// Flatten a message's content to text (string or array of text blocks).
+function entryText(e) {
+  const c = e && e.message && e.message.content;
+  if (typeof c === "string") return c;
+  if (Array.isArray(c)) return c.map(b => (b && b.type === "text") ? (b.text || "") : (typeof b === "string" ? b : "")).join("\\n");
+  return "";
+}
+
+// A Claude Code slash-command invocation is stored as a tiny user message
+// wrapping <command-message>/<command-name> (+ optional <command-args>); the
+// injected skill body is the next user entry with the same timestamp.
+function commandInfo(e) {
+  if (!e || e.type !== "user") return null;
+  const t = entryText(e);
+  if (!/^\\s*<command-(message|name)>/.test(t)) return null;
+  const name = (t.match(/<command-name>([^<]*)<\\/command-name>/) || [])[1] || "";
+  const message = (t.match(/<command-message>([^<]*)<\\/command-message>/) || [])[1] || "";
+  const args = (t.match(/<command-args>([\\s\\S]*?)<\\/command-args>/) || [])[1] || "";
+  return { name: name.trim(), message: message.trim(), args: args.trim() };
+}
+
+// Render a slash command as a "You" turn with a foldable card: the command
+// line is the summary, the injected skill instructions are the collapsed body.
+function renderCommand(e, info, bodyEntry) {
+  const wrap = el("div", { class: "entry first-of-run", data: { kind: "user", uuid: e.uuid || "" } });
+  wrap.appendChild(el("div", { class: "meta" }, [
+    el("span", { class: "role-label role-user", text: "You" }),
+    el("span", { text: fmtTime(e.timestamp) }),
+  ]));
+  const bubble = el("div", { class: "bubble user" });
+  const label = (info.name || "/command") + (info.args ? " " + info.args : "");
+  const head = [el("span", { class: "command-glyph", text: "⌘" }), el("span", { class: "command-name", text: label })];
+  const bodyText = bodyEntry ? entryText(bodyEntry) : "";
+  if (bodyText) {
+    const card = el("div", { class: "command", data: { kind: "command" } });
+    card.appendChild(el("div", { class: "command-head", onclick: () => card.classList.toggle("open") }, head));
+    card.appendChild(el("div", { class: "command-body" }, [el("div", { class: "md", html: md(bodyText) })]));
+    bubble.appendChild(card);
+  } else {
+    bubble.appendChild(el("div", { class: "command command-static" }, head));
+  }
+  wrap.appendChild(bubble);
+  return wrap;
+}
+
 // ---------- tool result lookup ----------
 // Map tool_use_id -> tool_result content (string or array of blocks)
 const TOOL_RESULTS = new Map();
@@ -781,6 +897,13 @@ function toolResultText(content) {
     }).join("\\n");
   }
   return JSON.stringify(content, null, 2);
+}
+
+// Unwrap <system-reminder> pseudo-XML from displayed tool output — keep the
+// message (e.g. an empty-file Read warning), drop the tags.
+function stripSystemReminders(s) {
+  if (typeof s !== "string") return s;
+  return s.replace(/<\\/?system-reminder>/g, "").trim();
 }
 
 // ---------- tool call renderer ----------
@@ -895,6 +1018,11 @@ function renderToolCall(block) {
     case "TaskOutput":
       arg = (input.task_id != null ? "#" + input.task_id : "") + (input.block ? "  (awaited)" : "");
       break;
+    case "TaskGet": {
+      const tid = input.taskId != null ? input.taskId : input.task_id;
+      arg = tid != null ? "#" + tid : "";
+      break;
+    }
     case "TaskStop": {
       arg = input.task_id != null ? "#" + input.task_id : "";
       // Result is a JSON string {message, task_id, task_type, command}; the
@@ -989,7 +1117,7 @@ function renderToolCall(block) {
 
   if (result && !skipResult) {
     body.appendChild(el("div", { class: "tool-result-label", text: isErr ? "ERROR" : "RESULT" }));
-    const txt = toolResultText(result.content);
+    const txt = stripSystemReminders(toolResultText(result.content));
     body.appendChild(el("pre", { text: txt.length > 8000 ? txt.slice(0, 8000) + "\\n…[truncated " + (txt.length - 8000) + " chars]" : txt }));
   }
   card.appendChild(body);
@@ -1005,7 +1133,7 @@ function renderSubagent(sub, parentBlock) {
   ]);
   card.appendChild(head);
   const body = el("div", { class: "subagent-body" });
-  renderRun(sub.entries || [], body);
+  renderRun(sub.entries || [], body, { inSubagent: true });
   card.appendChild(body);
   return card;
 }
@@ -1101,7 +1229,7 @@ function renderEntry(e, opts) {
 
   if (firstOfRun) {
     const meta = el("div", { class: "meta" }, [
-      el("span", { class: "role-label " + (isUser ? "role-user" : "role-asst"), text: isUser ? "You" : (DATA.header.assistantLabel || "Claude") }),
+      el("span", { class: "role-label " + (isUser ? "role-user" : "role-asst"), text: isUser ? ((opts && opts.inSubagent) ? "Prompt" : "You") : (DATA.header.assistantLabel || "Claude") }),
       el("span", { text: fmtTime(e.timestamp) }),
     ]);
     wrap.appendChild(meta);
@@ -1111,7 +1239,9 @@ function renderEntry(e, opts) {
 
   const content = e.message && e.message.content;
   if (typeof content === "string") {
-    bubble.appendChild(renderText(content));
+    const bash = parseBashInteraction(content);
+    if (bash) bubble.appendChild(renderBashInteraction(bash));
+    else bubble.appendChild(renderText(content));
   } else if (Array.isArray(content)) {
     for (const b of content) {
       if (b.type === "text") {
@@ -1156,15 +1286,37 @@ function isContextEntry(e) {
   const c = e && e.message && e.message.content;
   return Array.isArray(c) && c.length > 0 && c.every(b => b && b.type === "context");
 }
-function renderRun(entries, into) {
+function renderRun(entries, into, opts) {
+  const inSubagent = !!(opts && opts.inSubagent);
   let prevRole = null;
-  for (const e of entries) {
-    if (!isVisible(e)) continue;
+  const consumed = new Set();
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    if (!isVisible(e) || consumed.has(e)) continue;
+
+    // Slash command: fold the command + its injected skill body into one card.
+    const info = commandInfo(e);
+    if (info) {
+      let bodyEntry = null;
+      for (let j = i + 1; j < entries.length; j++) {
+        const n = entries[j];
+        if (!isVisible(n)) continue;
+        if (n.type === "user" && n.timestamp === e.timestamp) bodyEntry = n;
+        break;
+      }
+      let node = null;
+      try { node = renderCommand(e, info, bodyEntry); } catch (err) {
+        node = el("div", { class: "entry" }, [el("div", { class: "err-text", text: "[render error: " + (err && err.message || err) + "]" })]);
+      }
+      if (node) { into.appendChild(node); if (bodyEntry) consumed.add(bodyEntry); prevRole = "user"; }
+      continue;
+    }
+
     const ctx = isContextEntry(e);
     const firstOfRun = e.type !== prevRole;
     let node = null;
     try {
-      node = renderEntry(e, { firstOfRun });
+      node = renderEntry(e, { firstOfRun, inSubagent });
     } catch (err) {
       node = el("div", { class: "entry" }, [
         el("div", { class: "err-text", text: "[render error: " + (err && err.message || err) + "]" }),
@@ -1203,6 +1355,14 @@ function renderHead() {
   const R = H.redactions || {};
   const rTotal = Object.values(R).reduce((a, b) => a + b, 0);
   const rDetail = Object.entries(R).map(([k, n]) => k + ':' + n).join(', ');
+  // Session shape: duration + tool-call counts (incl. Bash/exec_command).
+  const durMs = (H.firstTimestamp && H.lastTimestamp)
+    ? (new Date(H.lastTimestamp).getTime() - new Date(H.firstTimestamp).getTime()) : 0;
+  const ts = sessionToolStats(DATA.entries);
+  const topN = ts.ranked.slice(0, 6);
+  const breakdown = topN.map(([n, c]) => escapeHtml(n) + " " + c).join(" · ")
+    + (ts.ranked.length > 6 ? " · +" + (ts.ranked.length - 6) + " more" : "");
+  const breakdownFull = ts.ranked.map(([n, c]) => n + ":" + c).join(", ");
   const hm = document.getElementById("head-meta");
   if (hm) {
     hm.innerHTML =
@@ -1210,6 +1370,11 @@ function renderHead() {
       '<span><b>cwd:</b>' + escapeHtml(H.cwd || "") + '</span>' +
       (H.model ? '<span><b>model:</b>' + escapeHtml(H.model) + '</span>' : '') +
       '<span><b>msgs:</b>' + messageCount + '</span>' +
+      (fmtDuration(durMs) ? '<span><b>duration:</b>' + fmtDuration(durMs) + '</span>' : '') +
+      (ts.total > 0
+        ? '<span title="' + escapeHtml(breakdownFull) + '"><b>tools:</b>' + ts.total +
+            (breakdown ? ' <span style="color:var(--muted)">(' + breakdown + ')</span>' : '') + '</span>'
+        : '') +
       ((T.input + T.output) > 0
         ? '<span><b>tokens:</b>' + fmtTokens(T.input + T.output) +
             ' (' + fmtTokens(T.input) + ' in / ' + fmtTokens(T.output) + ' out, cache ' +
@@ -1277,6 +1442,8 @@ function buildTree() {
               arg = (b.input.subagent_type ? b.input.subagent_type + ": " : "") + (b.input.description || "");
             } else if ((b.name === "TaskOutput" || b.name === "TaskStop") && b.input && b.input.task_id != null) {
               arg = "#" + b.input.task_id;
+            } else if (b.name === "TaskGet" && b.input && (b.input.taskId != null || b.input.task_id != null)) {
+              arg = "#" + (b.input.taskId != null ? b.input.taskId : b.input.task_id);
             }
             childRows.push({ kind: "tool", text: "↳ " + b.name + " " + relPath(String(arg)).slice(0, 80), uuid: e.uuid, filter: "tool" });
           }
@@ -1478,7 +1645,7 @@ function setupCopy() {
 
 // ---------- expand / collapse / keyboard ----------
 function expandAll(yes) {
-  for (const c of document.querySelectorAll(".thinking, .tool, .subagent, .askq, .context")) {
+  for (const c of document.querySelectorAll(".thinking, .tool, .subagent, .askq, .context, .command")) {
     c.classList.toggle("open", yes);
   }
   const btn = document.getElementById("btn-toggle-all");
@@ -1492,7 +1659,7 @@ function toggleAll(selector) {
 function setupKeys() {
   const toggle = document.getElementById("btn-toggle-all");
   if (toggle) toggle.addEventListener("click", () => {
-    const anyClosed = [...document.querySelectorAll(".thinking, .tool, .subagent, .askq, .context")]
+    const anyClosed = [...document.querySelectorAll(".thinking, .tool, .subagent, .askq, .context, .command")]
       .some(n => !n.classList.contains("open"));
     expandAll(anyClosed);
   });
