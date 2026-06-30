@@ -1,6 +1,7 @@
 ---
 name: session-export
 description: Export the current (or a specified) Claude Code or OpenAI Codex session to a single self-contained HTML file, including any subagent transcripts. Use when the user asks to "export this session", "save the chat as HTML", "share this conversation", or wants an offline-readable record of a coding-agent session.
+license: MIT
 metadata:
   author: Vincent Bruijn
   author-url: https://www.vincentbruijn.nl
