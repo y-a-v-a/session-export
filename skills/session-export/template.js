@@ -436,6 +436,36 @@ pre.shell-command::before {
 }
 .bash-output.bash-err { color: var(--bad); }
 
+/* task-notification card */
+.task-notification {
+  display: flex; flex-direction: column; gap: 0.3em;
+  padding: 0.6em 0.9em;
+  border-radius: 0.4em;
+  border-left: 3px solid var(--dim);
+  background: var(--panel2);
+  font-size: 0.9em;
+}
+.task-notification.task-ok  { border-color: var(--good); }
+.task-notification.task-kill { border-color: var(--bad); }
+.task-badge { font-weight: 600; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.05em; color: var(--muted); }
+.task-notification.task-ok  .task-badge { color: var(--good); }
+.task-notification.task-kill .task-badge { color: var(--bad); }
+.task-summary { color: var(--text); }
+.task-id { font-size: 0.78em; color: var(--dim); font-family: ui-monospace, monospace; }
+
+/* local-command cards */
+.local-cmd-caveat {
+  font-size: 0.85em; color: var(--dim); font-style: italic;
+  padding: 0.4em 0.8em;
+  border-left: 2px solid var(--border);
+}
+.local-cmd-stdout {
+  background: var(--codeBg); color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em; padding: 0.5em 0.8em; border-radius: 0.3em;
+  white-space: pre-wrap; word-break: break-word;
+}
+
 /* Copy-to-clipboard — button revealed on hover over its host wrapper */
 .copy-host { position: relative; }
 .copy-btn {
@@ -825,6 +855,41 @@ function renderBashInteraction(info) {
   return block;
 }
 
+// <task-notification> user message — background task completed/killed.
+function parseTaskNotification(text) {
+  if (typeof text !== "string" || !/^\\s*<task-notification>/.test(text)) return null;
+  const taskId  = (text.match(/<task-id>([^<]*)<\\/task-id>/) || [])[1] || "";
+  const status  = (text.match(/<status>([^<]*)<\\/status>/) || [])[1] || "";
+  const summary = (text.match(/<summary>([\\s\\S]*?)<\\/summary>/) || [])[1] || "";
+  return { taskId: taskId.trim(), status: status.trim(), summary: summary.trim() };
+}
+function renderTaskNotification(info) {
+  const sc = info.status === "completed" ? "task-ok" : info.status === "killed" ? "task-kill" : "task-other";
+  const icon = info.status === "completed" ? "✓" : info.status === "killed" ? "✗" : "•";
+  const card = el("div", { class: "task-notification " + sc });
+  card.appendChild(el("span", { class: "task-badge", text: icon + "  " + info.status }));
+  if (info.summary) card.appendChild(el("span", { class: "task-summary", text: info.summary }));
+  if (info.taskId) card.appendChild(el("span", { class: "task-id", text: "task " + info.taskId }));
+  return card;
+}
+
+// <local-command-caveat> / <local-command-stdout> user messages.
+function parseLocalCommand(text) {
+  if (typeof text !== "string" || !/^\\s*<local-command-/.test(text)) return null;
+  const caveat = (text.match(/<local-command-caveat>([\\s\\S]*?)<\\/local-command-caveat>/) || [])[1];
+  const stdout = (text.match(/<local-command-stdout>([\\s\\S]*?)<\\/local-command-stdout>/) || [])[1];
+  return { caveat: caveat != null ? caveat.trim() : null, stdout: stdout != null ? stdout.trim() : null };
+}
+function renderLocalCommand(info) {
+  const wrap = el("div", { class: "bash-block" });
+  if (info.caveat != null) wrap.appendChild(el("div", { class: "local-cmd-caveat", text: "local shell output follows" }));
+  if (info.stdout != null) {
+    const out = info.stdout || "(no output)";
+    wrap.appendChild(el("pre", { class: "local-cmd-stdout", text: out }));
+  }
+  return wrap;
+}
+
 // Flatten a message's content to text (string or array of text blocks).
 function entryText(e) {
   const c = e && e.message && e.message.content;
@@ -899,11 +964,16 @@ function toolResultText(content) {
   return JSON.stringify(content, null, 2);
 }
 
-// Unwrap <system-reminder> pseudo-XML from displayed tool output — keep the
-// message (e.g. an empty-file Read warning), drop the tags.
+// Unwrap pseudo-XML wrappers from displayed tool output — keep the content,
+// drop the tags. Handles <system-reminder> (injected context) and
+// <tool_use_error> (error payloads that wrap the error message).
 function stripSystemReminders(s) {
   if (typeof s !== "string") return s;
-  return s.replace(/<\\/?system-reminder>/g, "").trim();
+  return s
+    .replace(/<\\/?system-reminder>/g, "")
+    .replace(/<tool_use_error>/g, "")
+    .replace(/<\\/tool_use_error>/g, "")
+    .trim();
 }
 
 // ---------- tool call renderer ----------
@@ -1239,9 +1309,17 @@ function renderEntry(e, opts) {
 
   const content = e.message && e.message.content;
   if (typeof content === "string") {
-    const bash = parseBashInteraction(content);
-    if (bash) bubble.appendChild(renderBashInteraction(bash));
-    else bubble.appendChild(renderText(content));
+    const task = parseTaskNotification(content);
+    if (task) { bubble.appendChild(renderTaskNotification(task)); }
+    else {
+      const lcmd = parseLocalCommand(content);
+      if (lcmd) { bubble.appendChild(renderLocalCommand(lcmd)); }
+      else {
+        const bash = parseBashInteraction(content);
+        if (bash) bubble.appendChild(renderBashInteraction(bash));
+        else bubble.appendChild(renderText(content));
+      }
+    }
   } else if (Array.isArray(content)) {
     for (const b of content) {
       if (b.type === "text") {
