@@ -11,6 +11,8 @@
 //   --selector css screenshot the first element matching this CSS selector
 //   --index N      when --find matches several, pick the Nth (0-based)
 //   --full         whole page (capped height); default when no find/selector
+//   --span N       extend the crop over the N sibling elements after the match
+//   --no-expand    keep cards collapsed (see the page as a reader first does)
 // Prints the PNG path on stdout; warnings on stderr.
 
 const { spawn } = require('child_process');
@@ -25,10 +27,12 @@ const find = flag('--find');
 const selector = flag('--selector');
 const index = parseInt(flag('--index') || '0', 10) || 0;
 const full = argv.includes('--full');
+const expand = !argv.includes('--no-expand');
+const span = parseInt(flag('--span') || '0', 10) || 0;
 let out = flag('--out');
 
 if (!htmlArg) {
-  console.error('usage: shoot.js <file.html> [--find "text"|--selector css] [--out png] [--index N] [--full]');
+  console.error('usage: shoot.js <file.html> [--find "text"|--selector css] [--out png] [--index N] [--full] [--span N] [--no-expand]');
   process.exit(2);
 }
 const fileUrl = htmlArg.startsWith('file://') ? htmlArg : 'file://' + path.resolve(htmlArg);
@@ -86,7 +90,7 @@ async function start() {
 
   const mode = selector ? 'selector' : (find && !full ? 'find' : 'full');
   const prep = '(() => {' +
-    "document.querySelectorAll('.thinking,.tool,.subagent,.askq,.context,.command').forEach(e=>e.classList.add('open'));" +
+    (expand ? "document.querySelectorAll('.thinking,.tool,.subagent,.askq,.context,.command').forEach(e=>e.classList.add('open'));" : '') +
     'const mode=' + JSON.stringify(mode) + ', q=' + JSON.stringify(find || selector || '') + ', idx=' + index + ';' +
     "if(mode==='full') return JSON.stringify({full:true});" +
     'let el=null;' +
@@ -95,7 +99,9 @@ async function start() {
     'if(!el) return JSON.stringify({found:false});' +
     "el.scrollIntoView({block:'start'});" +
     'const r=el.getBoundingClientRect();' +
-    'return JSON.stringify({found:true,x:Math.max(0,r.left+scrollX-12),y:Math.max(0,r.top+scrollY-12),w:r.width+24,h:r.height+24});' +
+    'let last=el; for(let k=0;k<' + span + '&&last.nextElementSibling;k++) last=last.nextElementSibling;' +
+    'const b=last.getBoundingClientRect();' +
+    'return JSON.stringify({found:true,x:Math.max(0,r.left+scrollX-12),y:Math.max(0,r.top+scrollY-12),w:Math.max(r.right,b.right)-r.left+24,h:b.bottom-r.top+24});' +
     '})()';
   const ev = await S('Runtime.evaluate', { expression: prep, returnByValue: true });
   const info = JSON.parse(ev.result.value);

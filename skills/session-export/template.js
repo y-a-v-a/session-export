@@ -217,6 +217,7 @@ body * { font-size: inherit; font-family: inherit; }
 }
 .head-meta { display: flex; flex-direction: column; gap: 0.25em; color: var(--muted); }
 .head-meta b { color: var(--text); font-weight: 600; margin-right: 0.25em; }
+.head-meta a { color: var(--link); }
 .head-actions { margin-left: auto; align-self: flex-end; display: flex; gap: 0.5em; }
 .head-actions button {
   font: inherit;
@@ -302,8 +303,9 @@ body * { font-size: inherit; font-family: inherit; }
   margin: 0.5em 0;
 }
 .bubble hr { border: none; border-top: 1px solid var(--border); margin: 0.75em 0; }
-.bubble table { border-collapse: collapse; margin: 0.5em 0; }
-.bubble th, .bubble td { border: 1px solid var(--border); padding: 0.25em 0.5em; }
+.md table { border-collapse: collapse; margin: 0.5em 0; display: block; max-width: 100%; overflow-x: auto; }
+.md th, .md td { border: 1px solid var(--border); padding: 0.25em 0.5em; vertical-align: top; }
+.md th { background: var(--panel2); text-align: left; }
 
 /* Thinking */
 .thinking {
@@ -400,9 +402,52 @@ body * { font-size: inherit; font-family: inherit; }
   letter-spacing: 0.05em;
   margin: 1em 0;
 }
-/* TodoWrite / update_plan items carry their own status glyph; drop the <ul> bullet. */
-.tool[data-tool="TodoWrite"] ul,
-.tool[data-tool="update_plan"] ul { list-style: none; padding-left: 0; }
+/* Plan/todo items carry their own status glyph; drop the <ul> bullet. */
+.tool ul.plan-list { list-style: none; padding-left: 0; }
+
+/* Inline images (user attachments, screenshot tool results). */
+.inline-image {
+  display: block;
+  max-width: 100%;
+  max-height: 32em;
+  margin: 0.5em var(--base-padding);
+  border: 1px solid var(--border);
+  border-radius: 0.25em;
+  cursor: zoom-in;
+}
+.inline-image.zoomed { max-height: none; cursor: zoom-out; }
+.tool-body .inline-image { margin: 0.5em 0; }
+
+/* Session notices: recaps, model fallbacks, compaction, API errors. */
+.notice {
+  margin: 0.75em var(--base-padding);
+  padding: 0.5em 0.8em;
+  border-left: 3px solid var(--dim);
+  background: var(--panel2);
+  border-radius: 0.25em;
+  color: var(--muted);
+}
+.notice-label {
+  font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+  font-size: 0.8em; margin-right: 0.5em; color: var(--dim);
+}
+.notice.warn { border-color: var(--warn); }
+.notice.warn .notice-label { color: var(--warn); }
+.notice.error { border-color: var(--bad); color: var(--bad); }
+.notice.error .notice-label { color: var(--bad); }
+.compact-divider {
+  display: flex; align-items: center; gap: 0.75em;
+  margin: 2em var(--base-padding) 0.5em;
+  color: var(--dim); font-size: 0.85em;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.compact-divider::before, .compact-divider::after { content: ""; flex: 1; border-top: 1px dashed var(--border); }
+.queued-tag {
+  font-size: 0.8em; color: var(--dim);
+  border: 1px solid var(--border); border-radius: 0.625em;
+  padding: 0 0.5em; text-transform: none; letter-spacing: 0;
+}
+.ide-note { padding: 0.5em var(--base-padding) 0; color: var(--dim); font-size: 0.9em; }
 
 /* Bash command dressed up as a shell: green-on-black with a $ prompt.
    The prompt is a ::before glyph so it never lands in the copied text.
@@ -446,7 +491,8 @@ pre.shell-command::before {
   font-size: 0.9em;
 }
 .task-notification.task-ok  { border-color: var(--good); }
-.task-notification.task-kill { border-color: var(--bad); }
+.task-notification.task-kill, .task-notification.task-fail { border-color: var(--bad); }
+.task-notification.task-fail .task-badge { color: var(--bad); }
 .task-badge { font-weight: 600; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.05em; color: var(--muted); }
 .task-notification.task-ok  .task-badge { color: var(--good); }
 .task-notification.task-kill .task-badge { color: var(--bad); }
@@ -777,6 +823,18 @@ function md(src) {
   s = s.replace(/^\\s*---+\\s*$/gm, "<hr>");
   // Blockquotes (single line)
   s = s.replace(/^&gt;\\s?(.*)$/gm, "<blockquote>$1</blockquote>");
+  // Tables (GFM): header row, delimiter row, body rows. Emitted on one line so
+  // paragraph splitting never injects <br> between rows.
+  s = s.replace(/^[ \\t]*\\|.*\\|[ \\t]*\\n[ \\t]*\\|[ \\t:|-]+\\|[ \\t]*(?:\\n[ \\t]*\\|.*\\|[ \\t]*)*/gm, (m) => {
+    const rows = m.trim().split("\\n").map(r => r.trim().replace(/^\\||\\|$/g, "").split("|").map(c => c.trim()));
+    const head = rows[0], sep = rows[1], body = rows.slice(2);
+    if (sep.length !== head.length || !sep.every(c => /^:?-+:?$/.test(c))) return m;
+    const align = sep.map(c => c.startsWith(":") && c.endsWith(":") ? "center" : c.endsWith(":") ? "right" : "");
+    const cell = (tag, c, i) => "<" + tag + (align[i] ? ' style="text-align:' + align[i] + '"' : "") + ">" + c + "</" + tag + ">";
+    return "<table><thead><tr>" + head.map((c, i) => cell("th", c, i)).join("") + "</tr></thead><tbody>" +
+      body.map(r => "<tr>" + head.map((_, i) => cell("td", r[i] || "", i)).join("") + "</tr>").join("") +
+      "</tbody></table>";
+  });
   // Lists: group consecutive list items
   s = s.replace(/(^(?:[ \\t]*[-*+] .+(?:\\n|$))+)/gm, (m) => {
     const items = m.trim().split(/\\n/).map(l => l.replace(/^[ \\t]*[-*+] /, ""));
@@ -831,8 +889,128 @@ function renderText(text) {
 function renderContext(block) {
   const card = el("div", { class: "context", data: { kind: "context" } });
   card.appendChild(el("div", { class: "context-head", onclick: () => card.classList.toggle("open") }, block.summary || "context"));
-  card.appendChild(el("div", { class: "context-body" }, [el("div", { class: "md", html: md(String(block.text || "")) })]));
+  const inner = block.pre
+    ? el("pre", { text: String(block.text || "") })
+    : el("div", { class: "md", html: md(String(block.text || "")) });
+  card.appendChild(el("div", { class: "context-body" }, [inner]));
   return card;
+}
+
+// CLI-rendered command output (/context, /compact, colored shells) carries
+// ANSI SGR/OSC escapes that would otherwise show up as stray glyphs.
+function stripAnsi(s) {
+  if (typeof s !== "string") return s;
+  return s
+    .replace(/\\x1b\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)/g, "")
+    .replace(/\\x1b\\[[0-9;?]*[ -\\/]*[@-~]/g, "")
+    .replace(/\\x1b\\[?[0-9;?]*/g, "");
+}
+
+// Only raster types: an SVG data URL can carry script.
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+function renderImage(b) {
+  const s = b && b.source;
+  if (s && s.type === "base64" && IMAGE_TYPES.includes(s.media_type) &&
+      typeof s.data === "string" && /^[A-Za-z0-9+\\/=\\s]+$/.test(s.data)) {
+    const img = el("img", { class: "inline-image", alt: "image", loading: "lazy", src: "data:" + s.media_type + ";base64," + s.data.replace(/\\s+/g, "") });
+    img.addEventListener("click", () => img.classList.toggle("zoomed"));
+    return img;
+  }
+  return el("div", { class: "err-text", text: "[image]" });
+}
+function documentLabel(b) {
+  const t = b && b.source && b.source.media_type;
+  return "[document" + (t ? ": " + t : "") + (b && b.title ? " · " + b.title : "") + "]";
+}
+
+// Wrappers Claude Code puts around parts of a typed prompt: pasted blocks and
+// IDE context (opened file / selection). Rendered as their own small cards
+// instead of escaped pseudo-XML.
+const USER_WRAPPER_RE = /<(pasted_content|ide_opened_file|ide_selection)(?:\\s[^>]*)?>([\\s\\S]*?)<\\/\\1(?:\\s[^>]*)?>/g;
+function renderUserWrapper(tag, inner) {
+  const body = inner.replace(/^\\n+/, "").replace(/\\s+$/, "");
+  if (tag === "pasted_content") {
+    const n = body ? body.split("\\n").length : 0;
+    const card = renderContext({ summary: "pasted text · " + n + " line" + (n === 1 ? "" : "s"), text: body });
+    card.classList.add("open");
+    return card;
+  }
+  if (tag === "ide_opened_file") {
+    const m = body.match(/opened the file (.+?) in the IDE/);
+    return el("div", { class: "ide-note", text: "opened in IDE: " + relPath(m ? m[1] : body) });
+  }
+  const m = body.match(/selected the lines (\\d+) to (\\d+) from ([^\\n]+?):?\\n/);
+  const summary = m
+    ? "IDE selection · " + relPath(m[3]) + " " + m[1] + (m[2] !== m[1] ? "–" + m[2] : "")
+    : "IDE selection";
+  const sel = (m ? body.slice(m.index + m[0].length) : body)
+    .replace(/\\s*This may or may not be related to the current task\\.?\\s*$/, "");
+  return renderContext({ summary, text: sel, pre: true });
+}
+function renderUserText(text) {
+  const s = String(text == null ? "" : text);
+  const matches = [...s.matchAll(USER_WRAPPER_RE)];
+  if (!matches.length) return renderText(s);
+  const wrap = el("div", { class: "user-text" });
+  let last = 0;
+  for (const m of matches) {
+    const before = s.slice(last, m.index);
+    if (before.trim()) wrap.appendChild(renderText(before));
+    wrap.appendChild(renderUserWrapper(m[1], m[2]));
+    last = m.index + m[0].length;
+  }
+  const after = s.slice(last);
+  if (after.trim()) wrap.appendChild(renderText(after));
+  return wrap;
+}
+function userSummaryText(t) {
+  const st = parseScheduledTask(t);
+  if (st) return "scheduled task" + (st.name ? " · " + st.name : "");
+  const cmd = /^\\s*<command-(message|name)>/.test(t) ? (t.match(/<command-name>([^<]*)<\\/command-name>/) || [])[1] : null;
+  if (cmd) return cmd + " " + ((t.match(/<command-args>([\\s\\S]*?)<\\/command-args>/) || [])[1] || "");
+  const task = parseTaskNotification(t);
+  if (task) return "task " + (task.status || "update") + (task.summary ? ": " + task.summary : "");
+  const lcmd = parseLocalCommand(t);
+  if (lcmd) return lcmd.stdout || "";
+  const bash = parseBashInteraction(t);
+  if (bash) return bash.cmd != null ? "! " + bash.cmd : bash.out || bash.err;
+  return String(t)
+    .replace(/<(ide_opened_file|ide_selection)(?:\\s[^>]*)?>[\\s\\S]*?<\\/\\1>/g, "")
+    .replace(/<\\/?pasted_content[^>]*>/g, "");
+}
+
+// <scheduled-task name="…" file="…">prompt</scheduled-task> — a prompt fired
+// by a scheduled task rather than typed.
+function parseScheduledTask(text) {
+  if (typeof text !== "string") return null;
+  const m = text.match(/^\\s*<scheduled-task\\b([^>]*)>([\\s\\S]*?)(?:<\\/scheduled-task>\\s*)?$/);
+  if (!m) return null;
+  return { name: (m[1].match(/name="([^"]*)"/) || [])[1] || "", body: m[2].trim() };
+}
+function renderScheduledTask(info) {
+  const card = el("div", { class: "command", data: { kind: "command" } });
+  card.appendChild(el("div", { class: "command-head", onclick: () => card.classList.toggle("open") }, [
+    el("span", { class: "command-glyph", text: "⏱" }),
+    el("span", { class: "command-name", text: "scheduled task" + (info.name ? " · " + info.name : "") }),
+  ]));
+  card.appendChild(el("div", { class: "command-body" }, [renderText(info.body)]));
+  return card;
+}
+
+// Injected (isMeta) user messages: skill bodies, hook feedback, cut-off
+// notices, cross-session messages. Summarized as a one-line fold label.
+function metaSummary(text) {
+  const t = stripSystemReminders(String(text || ""));
+  const skill = t.match(/^Base directory for this skill:\\s*(\\S+)/);
+  if (skill) return "skill instructions · " + skill[1].split("/").filter(Boolean).pop();
+  const line = (t.split("\\n").map(s => s.trim()).find(Boolean) || "context").replace(/^#+\\s*/, "");
+  return line.length > 100 ? line.slice(0, 100) + "…" : line;
+}
+function isHiddenUserText(t) {
+  return typeof t === "string" && /^\\s*<total_tokens>[^<]*<\\/total_tokens>\\s*$/.test(t);
+}
+function isCaveatOnly(t) {
+  return typeof t === "string" && /^\\s*<local-command-caveat>[\\s\\S]*<\\/local-command-caveat>\\s*$/.test(t);
 }
 
 // A bang-shell command run from the prompt is stored as a user message wrapping
@@ -845,7 +1023,7 @@ function parseBashInteraction(text) {
   const out = (text.match(/<bash-stdout>([\\s\\S]*?)<\\/bash-stdout>/) || [])[1] || "";
   const err = (text.match(/<bash-stderr>([\\s\\S]*?)<\\/bash-stderr>/) || [])[1] || "";
   if (cmd == null && !out && !err) return null;
-  return { cmd: cmd != null ? cmd.trim() : null, out: out.replace(/\\s+$/, ""), err: err.replace(/\\s+$/, "") };
+  return { cmd: cmd != null ? cmd.trim() : null, out: stripAnsi(out).replace(/\\s+$/, ""), err: stripAnsi(err).replace(/\\s+$/, "") };
 }
 function renderBashInteraction(info) {
   const block = el("div", { class: "bash-block" });
@@ -864,8 +1042,8 @@ function parseTaskNotification(text) {
   return { taskId: taskId.trim(), status: status.trim(), summary: summary.trim() };
 }
 function renderTaskNotification(info) {
-  const sc = info.status === "completed" ? "task-ok" : info.status === "killed" ? "task-kill" : "task-other";
-  const icon = info.status === "completed" ? "✓" : info.status === "killed" ? "✗" : "•";
+  const sc = info.status === "completed" ? "task-ok" : info.status === "killed" ? "task-kill" : info.status === "failed" ? "task-fail" : "task-other";
+  const icon = info.status === "completed" ? "✓" : (info.status === "killed" || info.status === "failed") ? "✗" : "•";
   const card = el("div", { class: "task-notification " + sc });
   card.appendChild(el("span", { class: "task-badge", text: icon + "  " + info.status }));
   if (info.summary) card.appendChild(el("span", { class: "task-summary", text: info.summary }));
@@ -878,7 +1056,7 @@ function parseLocalCommand(text) {
   if (typeof text !== "string" || !/^\\s*<local-command-/.test(text)) return null;
   const caveat = (text.match(/<local-command-caveat>([\\s\\S]*?)<\\/local-command-caveat>/) || [])[1];
   const stdout = (text.match(/<local-command-stdout>([\\s\\S]*?)<\\/local-command-stdout>/) || [])[1];
-  return { caveat: caveat != null ? caveat.trim() : null, stdout: stdout != null ? stdout.trim() : null };
+  return { caveat: caveat != null ? caveat.trim() : null, stdout: stdout != null ? stripAnsi(stdout).trim() : null };
 }
 function renderLocalCommand(info) {
   const wrap = el("div", { class: "bash-block" });
@@ -938,25 +1116,59 @@ function renderCommand(e, info, bodyEntry) {
 // ---------- tool result lookup ----------
 // Map tool_use_id -> tool_result content (string or array of blocks)
 const TOOL_RESULTS = new Map();
+const TOOL_USES = new Map();
 function indexToolResults(entries) {
   for (const e of entries) {
     if (!e || !e.message || !Array.isArray(e.message.content)) continue;
     for (const b of e.message.content) {
+      if (!b) continue;
       if (b.type === "tool_result") TOOL_RESULTS.set(b.tool_use_id, b);
+      else if (b.type === "tool_use") TOOL_USES.set(b.id, b);
     }
   }
 }
+
+// A slash command run from a prompt is logged as system/local_command records
+// (command line, then stdout) in newer sessions; view them as the user-string
+// messages older sessions stored, so one render path handles both.
+function viewOf(e) {
+  if (e && e.type === "system" && e.subtype === "local_command") {
+    return { type: "user", uuid: e.uuid, timestamp: e.timestamp, message: { role: "user", content: e.content || "" } };
+  }
+  return e;
+}
+DATA.entries = DATA.entries.map(viewOf);
+for (const sa of Object.values(DATA.subagents)) sa.entries = Array.isArray(sa.entries) ? sa.entries.map(viewOf) : [];
+
 indexToolResults(DATA.entries);
 for (const sa of Object.values(DATA.subagents || {})) indexToolResults(sa.entries || []);
+
+// Injected messages tied to a tool call (the body a Skill call loads) render
+// inside that tool's card instead of as a separate turn.
+const LINKED_META = new Map();
+function indexLinkedMeta(entries) {
+  for (const e of entries) {
+    if (!e || e.type !== "user" || !e.isMeta || !e.sourceToolUseID) continue;
+    const tu = TOOL_USES.get(e.sourceToolUseID);
+    if (!tu || tu.name === "AskUserQuestion" || tu.name === "request_user_input") continue;
+    if (DATA.subagentForToolUseId[tu.id]) continue;
+    if (!LINKED_META.has(tu.id)) LINKED_META.set(tu.id, []);
+    LINKED_META.get(tu.id).push(e);
+  }
+}
+indexLinkedMeta(DATA.entries);
+for (const sa of Object.values(DATA.subagents || {})) indexLinkedMeta(sa.entries || []);
 
 function toolResultText(content) {
   if (content == null) return "";
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content.map(c => {
+      if (c == null) return "";
       if (typeof c === "string") return c;
       if (c.type === "text") return c.text || "";
       if (c.type === "image") return "[image]";
+      if (c.type === "document") return documentLabel(c);
       if (c.type === "tool_reference") return c.tool_name || "";
       return JSON.stringify(c);
     }).join("\\n");
@@ -965,15 +1177,74 @@ function toolResultText(content) {
 }
 
 // Unwrap pseudo-XML wrappers from displayed tool output — keep the content,
-// drop the tags. Handles <system-reminder> (injected context) and
-// <tool_use_error> (error payloads that wrap the error message).
+// drop the tags. Handles <system-reminder> (injected context),
+// <tool_use_error> (error payloads that wrap the error message) and
+// <persisted-output> (large output whose full copy wasn't found on disk).
 function stripSystemReminders(s) {
   if (typeof s !== "string") return s;
   return s
     .replace(/<\\/?system-reminder>/g, "")
-    .replace(/<tool_use_error>/g, "")
-    .replace(/<\\/tool_use_error>/g, "")
+    .replace(/<\\/?tool_use_error>/g, "")
+    .replace(/<\\/?persisted-output>/g, "")
     .trim();
+}
+
+function prettyJson(s) {
+  const t = s.trim();
+  if (!/^[\\[{]/.test(t)) return s;
+  try { return JSON.stringify(JSON.parse(t), null, 2); } catch { return s; }
+}
+function resultPre(txt, toolName) {
+  let t = stripAnsi(stripSystemReminders(txt));
+  if (/^mcp__/.test(toolName || "")) t = prettyJson(t);
+  return el("pre", { text: t.length > 8000 ? t.slice(0, 8000) + "\\n…[truncated " + (t.length - 8000) + " chars]" : t });
+}
+// Text parts go to <pre>, image parts render inline (screenshots, Read of a PNG).
+function renderResultContent(content, toolName) {
+  const blocks = Array.isArray(content) ? content : [content];
+  const wrap = el("div", { class: "tool-result" });
+  let buf = [];
+  let images = 0;
+  const flush = () => {
+    if (buf.length) wrap.appendChild(resultPre(buf.join("\\n"), toolName));
+    buf = [];
+  };
+  for (const c of blocks) {
+    if (c == null) continue;
+    if (typeof c === "object" && c.type === "image") { flush(); wrap.appendChild(renderImage(c)); images++; }
+    else buf.push(typeof c === "string" ? c : toolResultText([c]));
+  }
+  if (buf.length || !images) flush();
+  return wrap;
+}
+
+function toolDisplayName(name) {
+  const m = String(name || "").match(/^mcp__(.+?)__(.+)$/);
+  return m ? m[1] + " · " + m[2] : String(name || "tool");
+}
+// MCP calls often lead with routing ids (Atlassian cloudId, New Relic
+// accountId, a dev-server port) that say nothing about the call itself.
+const ROUTING_KEY_RE = /^(cloud|site|account|org|organization|workspace|tenant|project)_?id$|^port$/i;
+function firstStringArg(input) {
+  if (!input || typeof input !== "object") return "";
+  for (const k of ["description", "command", "file_path", "query", "url", "path", "title", "name", "prompt", "message"]) {
+    if (typeof input[k] === "string" && input[k].trim()) return input[k];
+  }
+  for (const [k, v] of Object.entries(input)) {
+    if (typeof v === "string" && v.trim() && !ROUTING_KEY_RE.test(k)) return v;
+  }
+  return "";
+}
+function firstLine(s) {
+  return (String(s || "").split("\\n").map(x => x.trim()).find(Boolean) || "").replace(/^#+\\s*/, "");
+}
+function planList(items, textKey) {
+  const ul = el("ul", { class: "plan-list" });
+  for (const t of items) {
+    const g = t.status === "completed" ? "✓ " : t.status === "in_progress" ? "▸ " : t.status === "cancelled" ? "✗ " : "• ";
+    ul.appendChild(el("li", { text: g + (t[textKey] || "") }));
+  }
+  return ul;
 }
 
 // ---------- tool call renderer ----------
@@ -999,7 +1270,6 @@ function renderToolCall(block) {
 
   // Header label
   let arg = "";
-  let preview = "";
   let bodyChildren = [];
   let skipResult = false; // when a case renders the result itself
   switch (name) {
@@ -1031,13 +1301,63 @@ function renderToolCall(block) {
       break;
     case "TodoWrite": {
       arg = (input.todos || []).length + " todos";
-      const ul = el("ul");
-      for (const t of (input.todos || [])) {
-        ul.appendChild(el("li", { text: (t.status === "completed" ? "✓ " : t.status === "in_progress" ? "▸ " : "• ") + (t.content || "") }));
-      }
-      bodyChildren.push(ul);
+      bodyChildren.push(planList(input.todos || [], "content"));
       break;
     }
+    // ----- Claude Code desktop turn tools -----
+    // Called with the full {items} list once, then incrementally with
+    // {advance:true} or {done:[n]}; the result text states the new position.
+    case "mcp__ccd_turn__update_plan": {
+      if (Array.isArray(input.items)) {
+        const items = input.items;
+        const active = items.find(t => t.status === "in_progress");
+        arg = items.length + " step" + (items.length === 1 ? "" : "s") + (active ? " · " + (active.content || "") : "");
+        bodyChildren.push(planList(items, "content"));
+        skipResult = !isErr;
+      } else {
+        const said = firstLine(toolResultText(result && result.content)).replace(/^Plan updated:\\s*/, "");
+        arg = said || (input.advance ? "advance" : Array.isArray(input.done) ? "done: step " + input.done.join(", ") : "");
+      }
+      break;
+    }
+    case "mcp__ccd_turn__wrap_up":
+      arg = firstLine(input.recap);
+      if (input.recap) bodyChildren.push(el("div", { class: "md", html: md(String(input.recap)) }));
+      skipResult = !isErr;
+      break;
+    case "mcp__ccd_session__mark_chapter":
+      arg = input.title || "";
+      if (input.summary) bodyChildren.push(el("div", { class: "md", html: md(String(input.summary)) }));
+      skipResult = !isErr;
+      break;
+    // ----- subagent / orchestration tools -----
+    case "SubagentHandback":
+      arg = firstLine(input.message);
+      if (input.message) bodyChildren.push(el("div", { class: "md", html: md(String(input.message)) }));
+      skipResult = !isErr;
+      break;
+    case "Monitor":
+      arg = input.description || input.command || "";
+      if (input.command) bodyChildren.push(el("pre", { class: "shell-command", text: String(input.command) }));
+      break;
+    case "ScheduleWakeup":
+      arg = input.stop ? "stop loop" : ((input.delaySeconds != null ? "in " + input.delaySeconds + "s" : "") + (input.reason ? " · " + input.reason : ""));
+      break;
+    case "SendUserFile": {
+      const files = Array.isArray(input.files) ? input.files.map(String) : [];
+      arg = files.map(f => f.split("/").pop()).join(", ");
+      if (input.caption) bodyChildren.push(el("div", { class: "md", html: md(String(input.caption)) }));
+      if (files.length) bodyChildren.push(el("pre", { text: files.map(relPath).join("\\n") }));
+      break;
+    }
+    case "Artifact":
+      arg = (input.action && input.action !== "publish" ? input.action + " " : "") + (input.file_path || input.url || input.intent || "");
+      if (input.description) bodyChildren.push(el("div", { class: "md", html: md(String(input.description)) }));
+      break;
+    case "SendFeedback":
+      arg = input.title || "";
+      if (input.details) bodyChildren.push(el("div", { class: "md", html: md(String(input.details)) }));
+      break;
     case "Skill":
       arg = input.skill || "";
       if (input.args) {
@@ -1124,12 +1444,7 @@ function renderToolCall(block) {
       const steps = Array.isArray(input.plan) ? input.plan : [];
       arg = steps.length + " step" + (steps.length === 1 ? "" : "s");
       if (input.explanation) bodyChildren.push(el("div", { class: "md", html: md(String(input.explanation)) }));
-      const ul = el("ul");
-      for (const s of steps) {
-        const g = s.status === "completed" ? "✓ " : s.status === "in_progress" ? "▸ " : "• ";
-        ul.appendChild(el("li", { text: g + (s.step || "") }));
-      }
-      bodyChildren.push(ul);
+      bodyChildren.push(planList(steps, "step"));
       break;
     }
     // ----- Codex multi-agent tools (namespace multi_agent_v1) -----
@@ -1171,14 +1486,13 @@ function renderToolCall(block) {
       skipResult = true;
       break;
     default:
-      arg = (input.description || input.command || input.file_path || "");
-      preview = JSON.stringify(input).slice(0, 200);
+      arg = firstStringArg(input);
       bodyChildren.push(el("pre", { text: JSON.stringify(input, null, 2) }));
   }
 
   const card = el("div", { class: "tool " + status, data: { kind: "tool", tool: name } });
   const head = el("div", { class: "tool-head", onclick: () => card.classList.toggle("open") }, [
-    el("span", { class: "tool-name", text: name }),
+    el("span", { class: "tool-name", text: toolDisplayName(name), title: name }),
     el("span", { class: "tool-arg", text: relPath(arg) }),
   ]);
   card.appendChild(head);
@@ -1187,8 +1501,11 @@ function renderToolCall(block) {
 
   if (result && !skipResult) {
     body.appendChild(el("div", { class: "tool-result-label", text: isErr ? "ERROR" : "RESULT" }));
-    const txt = stripSystemReminders(toolResultText(result.content));
-    body.appendChild(el("pre", { text: txt.length > 8000 ? txt.slice(0, 8000) + "\\n…[truncated " + (txt.length - 8000) + " chars]" : txt }));
+    body.appendChild(renderResultContent(result.content, name));
+  }
+  for (const le of (LINKED_META.get(id) || [])) {
+    const t = entryText(le);
+    body.appendChild(renderContext({ summary: metaSummary(t), text: stripSystemReminders(t) }));
   }
   card.appendChild(body);
   return card;
@@ -1270,20 +1587,81 @@ function renderAskQuestion(block, result) {
   return card;
 }
 
+// ---------- entry classification ----------
+// "user"/"assistant": a turn with a role header. "context" (Codex injected
+// instructions), "meta" (injected user-role text), "compact" (compaction
+// summary) and "system" (notices) render as bare cards that stay transparent
+// to role grouping. "linked" entries render inside their tool card; "hidden"
+// ones not at all.
+const SYSTEM_KINDS = new Set(["compact_boundary", "away_summary", "informational", "model_refusal_fallback"]);
+function entryKind(e) {
+  if (!e) return "hidden";
+  if (e.type === "system") return SYSTEM_KINDS.has(e.subtype) ? "system" : "hidden";
+  if (e.type !== "user" && e.type !== "assistant") return "hidden";
+  const c = e.message && e.message.content;
+  if (e.type === "user") {
+    if (Array.isArray(c) && c.every(b => b && b.type === "tool_result")) return "hidden";
+    if (Array.isArray(c) && c.every(b => b && b.type === "context")) return "context";
+    if (e.isCompactSummary) return "compact";
+    const t = entryText(e);
+    if (isHiddenUserText(t)) return "hidden";
+    if (e.isMeta) {
+      if (e.sourceToolUseID && LINKED_META.has(e.sourceToolUseID)) return "linked";
+      if (isCaveatOnly(t)) return "hidden";
+      return "meta";
+    }
+  }
+  return e.type;
+}
+const ASIDE_KINDS = new Set(["context", "meta", "compact", "system"]);
+
+function renderAside(e, kind) {
+  const wrap = el("div", { class: "entry aside", data: { kind: kind === "system" ? "notice" : "context", uuid: e.uuid || "" } });
+  if (kind === "context") {
+    for (const b of e.message.content) wrap.appendChild(renderContext(b));
+  } else if (kind === "meta") {
+    const t = entryText(e);
+    wrap.appendChild(renderContext({ summary: metaSummary(t), text: stripSystemReminders(t) }));
+  } else if (kind === "compact") {
+    const t = entryText(e).replace(/<tools-used-before-summary>([\\s\\S]*?)<\\/tools-used-before-summary>/, "Tools used before the summary: $1");
+    wrap.appendChild(renderContext({ summary: "compaction summary · earlier conversation", text: t }));
+  } else if (e.subtype === "compact_boundary") {
+    const c = e.compact || {};
+    const parts = ["conversation compacted"];
+    if (c.trigger) parts.push(c.trigger);
+    if (c.preTokens && c.postTokens) parts.push(fmtTokens(c.preTokens) + " → " + fmtTokens(c.postTokens) + " tokens");
+    wrap.appendChild(el("div", { class: "compact-divider", text: parts.join(" · ") }));
+  } else {
+    const label = e.subtype === "away_summary" ? "recap" : e.subtype === "model_refusal_fallback" ? "model fallback" : "notice";
+    const level = e.level === "warning" || e.subtype === "model_refusal_fallback" ? " warn" : e.level === "error" ? " error" : "";
+    const text = String(e.content || "").replace(/\\s*\\(disable recaps in \\/config\\)\\s*$/, "");
+    const note = el("div", { class: "notice" + level }, [el("span", { class: "notice-label", text: label })]);
+    note.appendChild(el("span", { class: "notice-text", html: md(text).replace(/^<p>|<\\/p>$/g, "") }));
+    wrap.appendChild(note);
+  }
+  return wrap;
+}
+
 // ---------- entry renderer ----------
+function renderUserString(content) {
+  const sched = parseScheduledTask(content);
+  if (sched) return renderScheduledTask(sched);
+  const task = parseTaskNotification(content);
+  if (task) return renderTaskNotification(task);
+  const lcmd = parseLocalCommand(content);
+  if (lcmd) return renderLocalCommand(lcmd);
+  const bash = parseBashInteraction(content);
+  if (bash) return renderBashInteraction(bash);
+  return renderUserText(content);
+}
+
 function renderEntry(e, opts) {
   if (!e) return null;
+  const kind = entryKind(e);
+  if (kind === "hidden" || kind === "linked") return null;
+  if (ASIDE_KINDS.has(kind)) return renderAside(e, kind);
+
   const t = e.type;
-  if (t !== "user" && t !== "assistant") return null;
-
-  // Injected developer/system context (Codex) — a bare foldable card, no role label.
-  const _content = e.message && e.message.content;
-  if (Array.isArray(_content) && _content.length && _content.every(b => b && b.type === "context")) {
-    const wrap = el("div", { class: "entry", data: { kind: "context", uuid: e.uuid || "" } });
-    for (const b of _content) wrap.appendChild(renderContext(b));
-    return wrap;
-  }
-
   const isUser = t === "user";
   const firstOfRun = !opts || opts.firstOfRun !== false;
   const wrap = el("div", {
@@ -1291,39 +1669,33 @@ function renderEntry(e, opts) {
     data: { kind: t, uuid: e.uuid || "" },
   });
 
-  // Skip pure tool_result-only user messages (already rendered inline with tool call)
-  if (isUser && e.message && Array.isArray(e.message.content)) {
-    const onlyToolResults = e.message.content.every(b => b.type === "tool_result");
-    if (onlyToolResults) return null;
-  }
-
   if (firstOfRun) {
     const meta = el("div", { class: "meta" }, [
       el("span", { class: "role-label " + (isUser ? "role-user" : "role-asst"), text: isUser ? ((opts && opts.inSubagent) ? "Prompt" : "You") : (DATA.header.assistantLabel || "Claude") }),
       el("span", { text: fmtTime(e.timestamp) }),
     ]);
+    if (e.queued) meta.appendChild(el("span", { class: "queued-tag", text: "sent while Claude was working" }));
     wrap.appendChild(meta);
   }
 
   const bubble = el("div", { class: "bubble " + (isUser ? "user" : "asst") });
-
-  const content = e.message && e.message.content;
+  const msg = e.message || {};
+  const content = msg.content;
+  if (e.isApiErrorMessage) {
+    bubble.appendChild(el("div", { class: "notice error" }, [
+      el("span", { class: "notice-label", text: "API error" }),
+      el("span", { text: entryText(e).replace(/^API Error:\\s*/, "") }),
+    ]));
+    wrap.appendChild(bubble);
+    return wrap;
+  }
   if (typeof content === "string") {
-    const task = parseTaskNotification(content);
-    if (task) { bubble.appendChild(renderTaskNotification(task)); }
-    else {
-      const lcmd = parseLocalCommand(content);
-      if (lcmd) { bubble.appendChild(renderLocalCommand(lcmd)); }
-      else {
-        const bash = parseBashInteraction(content);
-        if (bash) bubble.appendChild(renderBashInteraction(bash));
-        else bubble.appendChild(renderText(content));
-      }
-    }
+    bubble.appendChild(isUser ? renderUserString(content) : renderText(content));
   } else if (Array.isArray(content)) {
     for (const b of content) {
+      if (!b) continue;
       if (b.type === "text") {
-        bubble.appendChild(renderText(b.text || ""));
+        bubble.appendChild(isUser ? renderUserText(b.text || "") : renderText(b.text || ""));
       } else if (b.type === "thinking") {
         const text = (b.thinking || "").trim();
         if (!text) continue;
@@ -1334,16 +1706,23 @@ function renderEntry(e, opts) {
         bubble.appendChild(th);
       } else if (b.type === "tool_use") {
         bubble.appendChild(renderToolCall(b));
-      } else if (b.type === "tool_result") {
-        // skip (handled inline with tool_use)
       } else if (b.type === "image") {
-        bubble.appendChild(el("div", { class: "err-text", text: "[image]" }));
+        bubble.appendChild(renderImage(b));
+      } else if (b.type === "document") {
+        bubble.appendChild(el("div", { class: "err-text", text: documentLabel(b) }));
       }
     }
   }
 
-  if (e.message && e.message.stop_reason && e.message.stop_reason !== "end_turn" && e.message.stop_reason !== "tool_use") {
-    bubble.appendChild(el("div", { class: "stop-reason", text: "stop: " + e.message.stop_reason }));
+  const sr = msg.stop_reason;
+  if (sr === "refusal") {
+    const d = msg.stop_details || {};
+    bubble.appendChild(el("div", { class: "notice warn" }, [
+      el("span", { class: "notice-label", text: "stopped" + (d.category ? " · " + d.category : "") }),
+      el("span", { text: d.explanation || "The response was stopped by a safety classifier." }),
+    ]));
+  } else if (sr && sr !== "end_turn" && sr !== "tool_use") {
+    bubble.appendChild(el("div", { class: "stop-reason", text: "stop: " + sr }));
   }
 
   wrap.appendChild(bubble);
@@ -1352,17 +1731,15 @@ function renderEntry(e, opts) {
 
 // ---------- mount ----------
 function isVisible(e) {
-  if (!e || (e.type !== "user" && e.type !== "assistant")) return false;
-  if (e.type === "user" && e.message && Array.isArray(e.message.content)) {
-    return !e.message.content.every(b => b.type === "tool_result");
-  }
-  return true;
+  const k = entryKind(e);
+  return k !== "hidden" && k !== "linked";
 }
-// Injected-context cards render bare (no role header); they must stay
-// transparent to run-grouping so they don't suppress the next turn's header.
-function isContextEntry(e) {
-  const c = e && e.message && e.message.content;
-  return Array.isArray(c) && c.length > 0 && c.every(b => b && b.type === "context");
+// A slash command's injected body is the next user entry with the same
+// timestamp — but never another command, its stdout, or a shell block.
+function isCommandBody(n, e) {
+  if (!n || n.type !== "user" || n.timestamp !== e.timestamp) return false;
+  const t = entryText(n);
+  return !commandInfo(n) && !parseLocalCommand(t) && !parseBashInteraction(t);
 }
 function renderRun(entries, into, opts) {
   const inSubagent = !!(opts && opts.inSubagent);
@@ -1379,7 +1756,7 @@ function renderRun(entries, into, opts) {
       for (let j = i + 1; j < entries.length; j++) {
         const n = entries[j];
         if (!isVisible(n)) continue;
-        if (n.type === "user" && n.timestamp === e.timestamp) bodyEntry = n;
+        if (isCommandBody(n, e)) bodyEntry = n;
         break;
       }
       let node = null;
@@ -1390,7 +1767,7 @@ function renderRun(entries, into, opts) {
       continue;
     }
 
-    const ctx = isContextEntry(e);
+    const aside = ASIDE_KINDS.has(entryKind(e));
     const firstOfRun = e.type !== prevRole;
     let node = null;
     try {
@@ -1402,7 +1779,7 @@ function renderRun(entries, into, opts) {
     }
     if (node) {
       into.appendChild(node);
-      if (!ctx) prevRole = e.type;
+      if (!aside) prevRole = e.type;
     }
   }
 }
@@ -1438,7 +1815,7 @@ function renderHead() {
     ? (new Date(H.lastTimestamp).getTime() - new Date(H.firstTimestamp).getTime()) : 0;
   const ts = sessionToolStats(DATA.entries);
   const topN = ts.ranked.slice(0, 6);
-  const breakdown = topN.map(([n, c]) => escapeHtml(n) + " " + c).join(" · ")
+  const breakdown = topN.map(([n, c]) => escapeHtml(toolDisplayName(n)) + " " + c).join(" · ")
     + (ts.ranked.length > 6 ? " · +" + (ts.ranked.length - 6) + " more" : "");
   const breakdownFull = ts.ranked.map(([n, c]) => n + ":" + c).join(", ");
   const hm = document.getElementById("head-meta");
@@ -1460,6 +1837,11 @@ function renderHead() {
         : '') +
       (T.estCostUSD > 0 ? '<span><b>cost~</b>' + fmtCost(T.estCostUSD) + '</span>' : '') +
       (H.gitBranch ? '<span><b>branch:</b>' + escapeHtml(H.gitBranch) + '</span>' : '') +
+      (Array.isArray(H.prLinks) && H.prLinks.length
+        ? '<span><b>PR:</b>' + H.prLinks.filter(p => p && isSafeUrl(p.url) && /^https?:/i.test(p.url)).map(p =>
+            '<a href="' + escapeHtml(p.url) + '" target="_blank" rel="noopener">' +
+            escapeHtml((p.repository || "") + (p.number != null ? "#" + p.number : "") || p.url) + '</a>').join(", ") + '</span>'
+        : '') +
       (rTotal ? '<span title="' + escapeHtml(rDetail) + '" style="color:var(--warn)"><b>redacted:</b>' + rTotal + '</span>' : '');
   }
   const h1 = document.querySelector(".sidebar-head h1");
@@ -1476,9 +1858,8 @@ function buildTree() {
   tree.innerHTML = "";
   const rows = [];
   for (const e of DATA.entries) {
-    if (e.type !== "user" && e.type !== "assistant") continue;
-    if (e.type === "user" && e.message && Array.isArray(e.message.content) &&
-        e.message.content.every(b => b.type === "tool_result")) continue;
+    const kind = entryKind(e);
+    if (kind !== "user" && kind !== "assistant") continue;
     const isUser = e.type === "user";
     const label = isUser ? "U" : "A";
     const c = e.message && e.message.content;
@@ -1488,11 +1869,12 @@ function buildTree() {
     const childRows = [];
 
     if (typeof c === "string") {
-      textSummary = c;
+      textSummary = isUser ? userSummaryText(c) : c;
     } else if (Array.isArray(c)) {
       for (const b of c) {
+        if (!b) continue;
         if (b.type === "text") {
-          if (!textSummary) textSummary = b.text || "";
+          if (!textSummary.trim()) textSummary = isUser ? userSummaryText(b.text || "") : (b.text || "");
         } else if (b.type === "thinking") {
           if ((b.thinking || "").trim()) hasThinking = true;
         } else if (b.type === "tool_use") {
@@ -1522,8 +1904,19 @@ function buildTree() {
               arg = "#" + b.input.task_id;
             } else if (b.name === "TaskGet" && b.input && (b.input.taskId != null || b.input.task_id != null)) {
               arg = "#" + (b.input.taskId != null ? b.input.taskId : b.input.task_id);
+            } else if (b.name === "mcp__ccd_turn__update_plan" && b.input) {
+              const items = Array.isArray(b.input.items) ? b.input.items : null;
+              const active = items && items.find(t => t.status === "in_progress");
+              const r = TOOL_RESULTS.get(b.id);
+              arg = items ? (active ? active.content || "" : items.length + " steps")
+                : firstLine(toolResultText(r && r.content)).replace(/^Plan updated:\\s*/, "");
+            } else if (b.name === "mcp__ccd_turn__wrap_up" && b.input) {
+              arg = firstLine(b.input.recap);
+            } else if (b.name === "SubagentHandback" && b.input) {
+              arg = firstLine(b.input.message);
             }
-            childRows.push({ kind: "tool", text: "↳ " + b.name + " " + relPath(String(arg)).slice(0, 80), uuid: e.uuid, filter: "tool" });
+            if (!arg) arg = firstStringArg(b.input);
+            childRows.push({ kind: "tool", text: "↳ " + toolDisplayName(b.name) + " " + relPath(String(arg)).slice(0, 80), uuid: e.uuid, filter: "tool" });
           }
         }
       }

@@ -52,6 +52,10 @@ of TaskGet looks like raw JSON, see session 2e875f45…"*):
    ```
    node -e 'const h=require("./skills/session-export/template.js")();const m=h.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/);new Function(m[1]);console.log("ok")'
    ```
+   Then run the test suite (`node --test test/`). When a fix covers a new
+   record or block shape, add it to the fixture in `test/render.test.js`
+   (or `test/payload.test.js` for exporter-side changes), built with the
+   helpers in `test/helpers/fixtures.js` — real shapes, synthetic content.
 
 7. **Report** the change and offer to commit (template work currently lives on
    the `codex-export` branch).
@@ -61,9 +65,12 @@ of TaskGet looks like raw JSON, see session 2e875f45…"*):
 - `render.sh <session> [--codex] [--find "text"] [--index N]` — export then
   screenshot in one step (most common entry point).
 - `shoot.js <file.html> [--find "text" | --selector css] [--index N] [--full]
-  [--out png]` — screenshot any already-exported HTML. Drives Chrome over the
+  [--span N] [--no-expand] [--out png]` — screenshot any already-exported HTML.
+  `--span N` stretches the crop over the N siblings after the match (see a
+  card in context, e.g. a compaction divider plus the turns after it). Drives Chrome over the
   DevTools Protocol with Node's built-in WebSocket (no npm deps); expands all
-  collapsible cards, then crops to the matched element (or full page, capped at
+  collapsible cards (unless `--no-expand`, which shows the page as a reader
+  first sees it), then crops to the matched element (or full page, capped at
   4000px). Override the browser with `CHROME_BIN`.
 
 ## Notes

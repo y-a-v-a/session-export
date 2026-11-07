@@ -45,6 +45,7 @@ function redactObject(obj, counts) {
 
 function redactEntries(entries, counts) {
   for (const e of entries) {
+    if (e && typeof e.content === 'string') e.content = redactString(e.content, counts);
     if (!e || !e.message) continue;
     const c = e.message.content;
     if (typeof c === 'string') {
@@ -75,6 +76,7 @@ function redactEntries(entries, counts) {
 // Mutates payload in place; records per-kind hit counts on header.redactions.
 function redactPayload(payload) {
   const counts = {};
+  if (typeof payload.header.title === 'string') payload.header.title = redactString(payload.header.title, counts);
   redactEntries(payload.entries, counts);
   for (const sa of Object.values(payload.subagents || {})) {
     redactEntries(sa.entries || [], counts);

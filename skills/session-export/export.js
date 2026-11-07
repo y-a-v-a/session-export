@@ -108,7 +108,7 @@ function parseJsonl(file) {
 // ---------- subagent discovery ----------
 
 // Returns { byKey: Map<"type|desc", subagent[]>, all: subagent[] }
-// where subagent = { agentId, agentType, description, entries, source }
+// where subagent = { agentId, agentType, description, toolUseId, entries, source }
 function loadSubagents(projDir, sessionId) {
   const all = [];
 
@@ -126,6 +126,7 @@ function loadSubagents(projDir, sessionId) {
       agentId,
       agentType: meta.agentType || 'subagent',
       description: meta.description || '',
+      toolUseId: meta.toolUseId || null,
       entries,
       source: 'subdir',
       mtimeMs: st ? st.mtimeMs : 0,
@@ -232,6 +233,127 @@ function loadExternalToolResult(projDir, sessionId, toolUseId, content) {
 // Shared with codex-export.js; see redact.js for the rules and rationale.
 const { redactPayload } = require('./redact.js');
 
+// ---------- payload normalization ----------
+// The raw jsonl carries far more than the conversation: the full system prompt
+// (prompt_snapshot / api-request-shape), CLAUDE.md and memory contents,
+// organization ids, re-read file bodies, a duplicate of every tool output in
+// toolUseResult, etc. None of it is rendered, all of it would be embedded in a
+// file meant for sharing, and none of it is scanned by the redaction pass. So
+// the payload is an allowlist: only records the renderer draws, and only the
+// fields it reads.
+
+const SYSTEM_SUBTYPES = new Set([
+  'local_command', 'compact_boundary', 'away_summary', 'informational', 'model_refusal_fallback',
+]);
+
+function slimBlock(b) {
+  if (!b || typeof b !== 'object') return b;
+  switch (b.type) {
+    case 'text': return { type: 'text', text: b.text };
+    case 'thinking': return { type: 'thinking', thinking: b.thinking };
+    case 'redacted_thinking': return { type: 'redacted_thinking' };
+    case 'tool_use': return { type: 'tool_use', id: b.id, name: b.name, input: b.input };
+    case 'tool_result': {
+      const out = { type: 'tool_result', tool_use_id: b.tool_use_id, content: Array.isArray(b.content) ? b.content.map(slimBlock) : b.content };
+      if (b.is_error) out.is_error = true;
+      return out;
+    }
+    case 'image': {
+      const s = b.source || {};
+      if (s.type === 'base64') return { type: 'image', source: { type: 'base64', media_type: s.media_type, data: s.data } };
+      return { type: 'image', source: { type: s.type || 'unknown' } };
+    }
+    case 'document': {
+      const s = b.source || {};
+      return { type: 'document', source: { type: s.type || 'unknown', media_type: s.media_type || '' }, title: b.title || '' };
+    }
+    case 'tool_reference': return { type: 'tool_reference', tool_name: b.tool_name };
+    default: return b;
+  }
+}
+
+function slimMessage(m) {
+  const out = { role: m.role, content: Array.isArray(m.content) ? m.content.map(slimBlock) : m.content };
+  if (m.stop_reason) out.stop_reason = m.stop_reason;
+  const d = m.stop_details;
+  if (d && typeof d === 'object' && d.explanation) out.stop_details = { category: d.category || '', explanation: d.explanation };
+  return out;
+}
+
+function normalizeEntry(e) {
+  if (!e || typeof e !== 'object') return null;
+  if ((e.type === 'user' || e.type === 'assistant') && e.message) {
+    const out = { type: e.type, uuid: e.uuid, timestamp: e.timestamp, message: slimMessage(e.message) };
+    for (const k of ['isMeta', 'isCompactSummary', 'isApiErrorMessage']) if (e[k]) out[k] = true;
+    if (e.sourceToolUseID) out.sourceToolUseID = e.sourceToolUseID;
+    return out;
+  }
+  // A prompt typed (or a background-task notification delivered) while the
+  // model was mid-turn is stored only as a queued_command attachment.
+  if (e.type === 'attachment' && e.attachment && e.attachment.type === 'queued_command') {
+    const p = e.attachment.prompt;
+    if (typeof p === 'string' ? !p.trim() : !Array.isArray(p)) return null;
+    return {
+      type: 'user', uuid: e.uuid, timestamp: e.timestamp, queued: true,
+      message: { role: 'user', content: Array.isArray(p) ? p.map(slimBlock) : p },
+    };
+  }
+  if (e.type === 'system' && SYSTEM_SUBTYPES.has(e.subtype)) {
+    const out = { type: 'system', subtype: e.subtype, uuid: e.uuid, timestamp: e.timestamp, content: typeof e.content === 'string' ? e.content : '' };
+    if (e.level) out.level = e.level;
+    const cm = e.compactMetadata;
+    if (cm) out.compact = { trigger: cm.trigger || '', preTokens: cm.preTokens || 0, postTokens: cm.postTokens || 0 };
+    return out;
+  }
+  return null;
+}
+
+function contentKey(c) {
+  if (typeof c === 'string') return c.trim();
+  if (Array.isArray(c)) return c.map(b => (b && b.type === 'text' ? b.text || '' : '')).join('\n').trim();
+  return '';
+}
+
+function normalizeEntries(raw) {
+  const out = [];
+  for (const e of raw) {
+    const n = normalizeEntry(e);
+    if (n) out.push(n);
+  }
+  const delivered = new Set(out.filter(e => e.type === 'user' && !e.queued).map(e => contentKey(e.message.content)));
+  return out.filter(e => !e.queued || !delivered.has(contentKey(e.message.content)));
+}
+
+// Session-level metadata records (title, PR links) live beside the messages.
+function sessionMeta(raw) {
+  let customTitle = '', aiTitle = '', agentName = '';
+  const prLinks = [];
+  for (const e of raw) {
+    if (e.type === 'custom-title' && e.customTitle) customTitle = e.customTitle;
+    else if (e.type === 'ai-title' && e.aiTitle) aiTitle = e.aiTitle;
+    else if (e.type === 'agent-name' && e.agentName) agentName = e.agentName;
+    else if (e.type === 'pr-link' && typeof e.prUrl === 'string' && /^https?:\/\//.test(e.prUrl) && !prLinks.some(p => p.url === e.prUrl)) {
+      prLinks.push({ url: e.prUrl, number: e.prNumber != null ? e.prNumber : null, repository: e.prRepository || '' });
+    }
+  }
+  return { title: customTitle || aiTitle || agentName || '', prLinks };
+}
+
+// Per-million USD rates (approx Anthropic public list, May 2026).
+const RATES = {
+  'claude-opus':       { in: 15.0, out: 75.0, cacheRead: 1.50, cacheWrite: 18.75 },
+  'claude-sonnet':     { in:  3.0, out: 15.0, cacheRead: 0.30, cacheWrite:  3.75 },
+  'claude-haiku':      { in:  1.0, out:  5.0, cacheRead: 0.10, cacheWrite:  1.25 },
+};
+function rateFor(m) {
+  if (!m) return RATES['claude-sonnet'];
+  if (m.includes('opus')) return RATES['claude-opus'];
+  if (m.includes('haiku')) return RATES['claude-haiku'];
+  return RATES['claude-sonnet'];
+}
+
+const isRealModel = m => typeof m === 'string' && m && m !== '<synthetic>';
+
 // ---------- assemble payload ----------
 
 function buildPayload(mainFile) {
@@ -265,49 +387,72 @@ function buildPayload(mainFile) {
   expandToolResults(entries);
   for (const sa of subs.all) expandToolResults(sa.entries);
 
-  // For each Agent/Task tool_use, attach a matched subagent transcript.
-  // Strategy: match by (agentType, description) consumed in order; fall back
-  // to inline progress group keyed by tool_use id.
+  // Attach each subagent transcript to the tool_use that spawned it. Newer
+  // sessions record that tool_use id in meta.json, which also covers agents
+  // spawned by other agents (their tool_use lives in the parent subagent's
+  // transcript, not the main one). Older sessions fall back to matching
+  // (agentType, description) in order, then to inline progress records.
   const consumed = new Set();
   const subagentForToolUseId = {};
-  for (const e of entries) {
-    if (!e.message || !Array.isArray(e.message.content)) continue;
-    for (const b of e.message.content) {
-      if (b.type !== 'tool_use') continue;
-      const isAgent = b.name === 'Agent' || b.name === 'Task';
-      if (!isAgent) continue;
-      const input = b.input || {};
-      const key = `${input.subagent_type || 'subagent'}|${input.description || ''}`;
-      const pool = subs.byKey.get(key) || [];
-      const pick = pool.find(p => !consumed.has(p.agentId));
-      if (pick) {
-        consumed.add(pick.agentId);
-        subagentForToolUseId[b.id] = { agentId: pick.agentId, source: pick.source };
-      } else if (inlineProgress.has(b.id)) {
-        // Synthesize a subagent entry from inline progress
-        const synth = {
-          agentId: `inline-${b.id.slice(-8)}`,
-          agentType: input.subagent_type || 'subagent',
-          description: input.description || '',
-          entries: inlineProgress.get(b.id),
-          source: 'progress',
-        };
-        subs.all.push(synth);
-        subs.byKey.set(`${synth.agentType}|${synth.description}`, [synth]);
-        subagentForToolUseId[b.id] = { agentId: synth.agentId, source: 'progress' };
+  const byToolUseId = new Map();
+  for (const sa of subs.all) if (sa.toolUseId && !byToolUseId.has(sa.toolUseId)) byToolUseId.set(sa.toolUseId, sa);
+  // A skill with forked execution runs in its own subagent; its meta.json has
+  // no toolUseId, but the Skill tool_result's toolUseResult names the agent.
+  const byAgentId = new Map(subs.all.map(sa => [sa.agentId, sa]));
+  function indexForkedResults(es) {
+    for (const e of es) {
+      const agentId = e.toolUseResult && e.toolUseResult.agentId;
+      if (!agentId || !byAgentId.has(agentId) || !e.message || !Array.isArray(e.message.content)) continue;
+      for (const b of e.message.content) {
+        if (b && b.type === 'tool_result' && b.tool_use_id && !byToolUseId.has(b.tool_use_id)) byToolUseId.set(b.tool_use_id, byAgentId.get(agentId));
       }
     }
   }
+  indexForkedResults(entries);
+  for (const sa of subs.all) indexForkedResults(sa.entries);
+  function link(b, sa) {
+    consumed.add(sa.agentId);
+    subagentForToolUseId[b.id] = { agentId: sa.agentId, source: sa.source };
+  }
+  function linkAgents(es, allowProgress) {
+    for (const e of es) {
+      if (!e.message || !Array.isArray(e.message.content)) continue;
+      for (const b of e.message.content) {
+        if (!b || b.type !== 'tool_use' || subagentForToolUseId[b.id]) continue;
+        const byId = byToolUseId.get(b.id);
+        if (byId && !consumed.has(byId.agentId)) { link(b, byId); continue; }
+        const isAgent = b.name === 'Agent' || b.name === 'Task';
+        if (!isAgent) continue;
+        const input = b.input || {};
+        const key = `${input.subagent_type || 'subagent'}|${input.description || ''}`;
+        const pool = subs.byKey.get(key) || [];
+        const pick = pool.find(p => !consumed.has(p.agentId) && !p.toolUseId);
+        if (pick) { link(b, pick); continue; }
+        if (allowProgress && inlineProgress.has(b.id)) {
+          const synth = {
+            agentId: `inline-${b.id.slice(-8)}`,
+            agentType: input.subagent_type || 'subagent',
+            description: input.description || '',
+            entries: inlineProgress.get(b.id),
+            source: 'progress',
+          };
+          subs.all.push(synth);
+          link(b, synth);
+        }
+      }
+    }
+  }
+  linkAgents(entries, true);
+  for (let i = 0; i < subs.all.length; i++) linkAgents(subs.all[i].entries, false);
 
   // Any leftover subagents that didn't match a tool_use — keep them but mark
   // unattached so the renderer can show them in an appendix.
-  const orphanSubagents = subs.all
-    .filter(sa => !Object.values(subagentForToolUseId).some(v => v.agentId === sa.agentId))
-    .map(sa => sa.agentId);
+  const orphanSubagents = subs.all.filter(sa => !consumed.has(sa.agentId)).map(sa => sa.agentId);
 
-  // Header summary
+  // Header summary. Cost is priced per message so mixed-model sessions (and
+  // `<synthetic>` API-error stand-ins) don't inherit the last message's rate.
   let firstTs = null, lastTs = null, messageCount = 0;
-  const totals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  const totals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, estCostUSD: 0 };
   let model = '', gitBranch = '', cwd = '';
   for (const e of entries) {
     if (e.timestamp) {
@@ -319,30 +464,20 @@ function buildPayload(mainFile) {
     if (e.gitBranch) gitBranch = e.gitBranch;
     if (e.type === 'assistant' && e.message && e.message.usage) {
       const u = e.message.usage;
-      totals.input += u.input_tokens || 0;
-      totals.output += u.output_tokens || 0;
-      totals.cacheRead += u.cache_read_input_tokens || 0;
-      totals.cacheWrite += u.cache_creation_input_tokens || 0;
-      if (e.message.model) model = e.message.model;
+      const t = {
+        input: u.input_tokens || 0, output: u.output_tokens || 0,
+        cacheRead: u.cache_read_input_tokens || 0, cacheWrite: u.cache_creation_input_tokens || 0,
+      };
+      totals.input += t.input;
+      totals.output += t.output;
+      totals.cacheRead += t.cacheRead;
+      totals.cacheWrite += t.cacheWrite;
+      const m = isRealModel(e.message.model) ? e.message.model : model;
+      const r = rateFor(m);
+      totals.estCostUSD += (t.input * r.in + t.output * r.out + t.cacheRead * r.cacheRead + t.cacheWrite * r.cacheWrite) / 1e6;
+      if (isRealModel(e.message.model)) model = e.message.model;
     }
   }
-
-  // Per-million USD rates (approx Anthropic public list, May 2026).
-  const RATES = {
-    'claude-opus':       { in: 15.0, out: 75.0, cacheRead: 1.50, cacheWrite: 18.75 },
-    'claude-sonnet':     { in:  3.0, out: 15.0, cacheRead: 0.30, cacheWrite:  3.75 },
-    'claude-haiku':      { in:  1.0, out:  5.0, cacheRead: 0.10, cacheWrite:  1.25 },
-  };
-  function rateFor(m) {
-    if (!m) return RATES['claude-sonnet'];
-    if (m.includes('opus')) return RATES['claude-opus'];
-    if (m.includes('haiku')) return RATES['claude-haiku'];
-    return RATES['claude-sonnet'];
-  }
-  const r = rateFor(model);
-  totals.estCostUSD =
-    (totals.input * r.in + totals.output * r.out +
-     totals.cacheRead * r.cacheRead + totals.cacheWrite * r.cacheWrite) / 1e6;
 
   const subagentsOut = {};
   for (const sa of subs.all) {
@@ -350,14 +485,17 @@ function buildPayload(mainFile) {
       agentId: sa.agentId,
       agentType: sa.agentType,
       description: sa.description,
-      entries: sa.entries,
+      entries: normalizeEntries(sa.entries),
       source: sa.source,
     };
   }
 
+  const meta = sessionMeta(entries);
   return {
     header: {
       sessionId,
+      title: meta.title,
+      prLinks: meta.prLinks,
       cwd,
       gitBranch,
       firstTimestamp: firstTs,
@@ -367,7 +505,7 @@ function buildPayload(mainFile) {
       totals,
       generatedAt: new Date().toISOString(),
     },
-    entries,
+    entries: normalizeEntries(entries),
     subagents: subagentsOut,
     subagentForToolUseId,
     orphanSubagents,
@@ -395,7 +533,9 @@ const TEMPLATE = require('./template.js')();
 
 // ---------- main ----------
 
-(function main() {
+module.exports = { buildPayload, normalizeEntries, findSessionFile, emit };
+
+if (require.main === module) (function main() {
   try {
     const args = process.argv.slice(2);
     const flags = new Set(args.filter(a => a.startsWith('--')));

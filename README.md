@@ -64,14 +64,32 @@ keys, AWS access keys, GitHub PATs, Slack tokens, Google API keys, JWTs,
 `[REDACTED:<kind>]`. Counts appear as a yellow `redacted:<n>` chip in the
 header. It's a heuristic pass — review exports before sharing.
 
+## What's left out
+
+The Claude Code transcript holds much more than the conversation: the full
+system prompt, CLAUDE.md and memory contents, organization ids, re-read
+file bodies, and a second copy of every tool output. None of that is
+rendered, so none of it is exported — the embedded payload carries only
+the records and fields the page draws (messages, tool calls and results,
+subagent transcripts, and a few session notices). PDF attachments are
+reduced to a `[document]` label; raster images stay and render inline.
+
 ## What's in the HTML
 
-- Embedded JSON payload in `<script id="session-data">` (no base64).
+- Embedded JSON payload in `<script id="session-data">`.
 - Inline CSS, no CDN. Searchable sidebar tree with filter chips
   (user / asst / tools / subagent); resizable, collapsible.
 - Collapsible thinking blocks and tool outputs; subagent
   (`Task` / `Agent` / `Explore` / …) cards expand to the full nested
   transcript, recursively.
+- Claude Code specifics: slash commands (also `/context`, `/compact`
+  run locally), prompts typed while Claude was working, scheduled-task
+  runs, pasted text and IDE context, skill instructions folded into their
+  `Skill` call, compaction dividers and summaries, recaps, model
+  fallbacks, refusals and API errors, background-task notifications,
+  desktop plan/recap tools, MCP tools (`server · tool`), markdown
+  tables, inline screenshots. Injected messages (hook feedback, skill
+  bodies) are collapsed cards, never shown as the user speaking.
 - Keyboard: `/` focus search · `t` thinking · `o` tool outputs ·
   `b` sidebar · `[` / `]` prev/next turn · `Esc` clear search.
 
@@ -88,7 +106,9 @@ includes a `cool` example.
 
 Claude Code has shipped three transcript layouts; the exporter handles
 all three: per-session `<sessionId>/subagents/agent-<id>.jsonl` (+
-`.meta.json`); `agent-<id>.jsonl` siblings linked by `sessionId`; and
+`.meta.json`, whose `toolUseId` links each agent to the call that
+spawned it — including agents spawned by other agents, which nest inside
+their parent's card, and skills that run forked in their own agent); `agent-<id>.jsonl` siblings linked by `sessionId`; and
 inline `progress` records linked by `parentToolUseID` (deduped by inner
 `uuid`). External tool-result spillover under
 `<sessionId>/tool-results/<id>.txt` is inlined when present.
@@ -109,6 +129,19 @@ skills/session-export/
 ```
 
 No runtime dependencies; Node 18+.
+
+## Tests
+
+```sh
+node --test test/
+```
+
+`test/payload.test.js` checks what the exporter puts in the payload;
+`test/render.test.js` loads an exported fixture in headless Chrome and
+asserts on the rendered page (skipped when no Chrome/Chromium is found —
+set `CHROME_BIN`). Fixtures are built in `test/helpers/fixtures.js` from
+record shapes seen in real Claude Code 2.1.x sessions, with synthetic
+content.
 
 ## License
 

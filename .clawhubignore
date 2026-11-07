@@ -9,6 +9,9 @@
 claude-session*.html
 pi-session*.html
 
+# Development-only: tests and fixtures
+test/
+
 # ClawHub CLI install/lock metadata
 .clawhub/
 .clawdhub/

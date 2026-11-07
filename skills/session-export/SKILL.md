@@ -58,7 +58,7 @@ Counts per kind are stored on `header.redactions` and surfaced as a yellow `reda
 ## Output
 
 Single HTML file with:
-- Embedded JSON payload (`<script id="session-data" type="application/json">`), no base64.
+- Embedded JSON payload (`<script id="session-data" type="application/json">`) holding only what the page renders — no system prompt, CLAUDE.md/memory contents, org ids or duplicate tool-output copies from the raw transcript.
 - Inline CSS supporting light + dark themes (16px base, em-based), respects `prefers-color-scheme`, manual toggle persisted in localStorage.
 - Sidebar tree of turns with live search and filter chips.
 - Collapsible thinking blocks, collapsible tool outputs.
